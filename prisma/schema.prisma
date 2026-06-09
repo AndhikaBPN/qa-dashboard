@@ -1,0 +1,199 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  ADMIN
+  QA
+  VIEWER
+}
+
+enum ProjectStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum Priority {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+  LOWEST
+}
+
+enum TestType {
+  UNIT
+  INTEGRATION
+  FUNCTIONAL
+  PERFORMANCE
+  API
+  SECURITY
+}
+
+enum ScenarioType {
+  POSITIVE
+  NEGATIVE
+  EDGE_CASE
+}
+
+enum ExecutionStatus {
+  PASS
+  FAIL
+  SKIP
+  BLOCKED
+  NOT_RUN
+}
+
+enum SuiteType {
+  CASE_FOLDER
+  RUN_FOLDER
+}
+
+enum BugSeverity {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum BugStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum BugType {
+  FUNCTIONAL
+  UI
+  PERFORMANCE
+  SECURITY
+  API
+  INTEGRATION
+  OTHER
+}
+
+model Project {
+  id          String        @id @default(cuid())
+  name        String
+  description String?
+  status      ProjectStatus @default(ACTIVE)
+  testSuites  TestSuite[]
+  testCases   TestCase[]
+  testRuns    TestRun[]
+  bugs        Bug[]
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+}
+
+model User {
+  id              String      @id @default(cuid())
+  email           String      @unique
+  name            String
+  passwordHash    String
+  role            Role        @default(QA)
+  createdAt       DateTime    @default(now())
+  testCases       TestCase[]  @relation("Author")
+  testRuns        TestRun[]   @relation("Creator")
+  executions      Execution[]
+  reportedBugs    Bug[]       @relation("Reporter")
+  assignedBugs    Bug[]       @relation("Assignee")
+}
+
+model TestSuite {
+  id         String      @id @default(cuid())
+  name       String
+  parentId   String?
+  parent     TestSuite?  @relation("SuiteTree", fields: [parentId], references: [id])
+  children   TestSuite[] @relation("SuiteTree")
+  orderIndex Int         @default(0)
+  type       SuiteType   @default(CASE_FOLDER)
+  projectId  String?
+  project    Project?    @relation(fields: [projectId], references: [id])
+  testCases  TestCase[]
+  testRuns   TestRun[]
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+}
+
+model TestCase {
+  id             String       @id @default(cuid())
+  tcId           String       @unique
+  title          String
+  precondition   String?
+  steps          Json
+  expectedResult String
+  priority       Priority
+  type           TestType
+  scenarioType   ScenarioType
+  suiteId        String?
+  suite          TestSuite?   @relation(fields: [suiteId], references: [id])
+  projectId      String?
+  project        Project?     @relation(fields: [projectId], references: [id])
+  authorId       String
+  author         User         @relation("Author", fields: [authorId], references: [id])
+  jiraIssueKey   String?
+  executions     Execution[]
+  bugs           Bug[]
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+model TestRun {
+  id          String      @id @default(cuid())
+  name        String
+  suiteId     String?
+  suite       TestSuite?  @relation(fields: [suiteId], references: [id])
+  projectId   String?
+  project     Project?    @relation(fields: [projectId], references: [id])
+  createdById String
+  createdBy   User        @relation("Creator", fields: [createdById], references: [id])
+  executions  Execution[]
+  createdAt   DateTime    @default(now())
+  completedAt DateTime?
+}
+
+model Execution {
+  id           String          @id @default(cuid())
+  testCaseId   String
+  testCase     TestCase        @relation(fields: [testCaseId], references: [id])
+  testRunId    String
+  testRun      TestRun         @relation(fields: [testRunId], references: [id])
+  executorId   String
+  executor     User            @relation(fields: [executorId], references: [id])
+  status       ExecutionStatus @default(NOT_RUN)
+  actualResult String?
+  evidence     Json            @default("[]")
+  executedAt   DateTime        @default(now())
+
+  @@unique([testCaseId, testRunId])
+}
+
+model Bug {
+  id             String      @id @default(cuid())
+  bugId          String      @unique
+  title          String
+  steps          Json        @default("[]")
+  attachment     String[]
+  expectedResult String
+  actualResult   String
+  severity       BugSeverity
+  priority       Priority
+  type           BugType
+  status         BugStatus   @default(OPEN)
+  projectId      String
+  project        Project     @relation(fields: [projectId], references: [id])
+  assigneeId     String?
+  assignee       User?       @relation("Assignee", fields: [assigneeId], references: [id])
+  reporterId     String
+  reporter       User        @relation("Reporter", fields: [reporterId], references: [id])
+  testCaseId     String?
+  testCase       TestCase?   @relation(fields: [testCaseId], references: [id])
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+}

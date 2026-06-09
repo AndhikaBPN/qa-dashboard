@@ -1,0 +1,27 @@
+{
+  "name": "qa-hub",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently \"pnpm --filter api dev\" \"pnpm --filter web dev\"",
+    "build": "pnpm --filter shared build && pnpm --filter api build && pnpm --filter web build",
+    "test": "pnpm --filter api test",
+    "test:e2e": "pnpm --filter web test:e2e",
+    "prisma": "prisma",
+    "db:migrate": "prisma migrate dev",
+    "db:seed": "prisma db seed"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.14.0"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "bcryptjs": "^2.4.3",
+    "concurrently": "^8.2.2",
+    "prisma": "^5.14.0",
+    "tsx": "^4.15.1"
+  }
+}

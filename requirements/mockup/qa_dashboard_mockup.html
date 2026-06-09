@@ -1,0 +1,354 @@
+
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--font-sans, sans-serif); }
+
+.app { display: flex; height: 600px; border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-lg); overflow: hidden; background: var(--color-background-tertiary); }
+
+/* Sidebar */
+.sidebar { width: 200px; background: var(--color-background-primary); border-right: 0.5px solid var(--color-border-tertiary); display: flex; flex-direction: column; flex-shrink: 0; }
+.sidebar-header { padding: 14px 16px; border-bottom: 0.5px solid var(--color-border-tertiary); }
+.sidebar-logo { font-size: 14px; font-weight: 500; color: var(--color-text-primary); display: flex; align-items: center; gap: 8px; }
+.sidebar-logo i { font-size: 18px; color: var(--color-text-info); }
+.sidebar-section { padding: 12px 8px 4px; font-size: 11px; color: var(--color-text-tertiary); text-transform: uppercase; letter-spacing: 0.06em; }
+.nav-item { display: flex; align-items: center; gap: 8px; padding: 7px 10px; margin: 1px 6px; border-radius: var(--border-radius-md); cursor: pointer; font-size: 13px; color: var(--color-text-secondary); transition: background 0.1s; }
+.nav-item:hover { background: var(--color-background-secondary); }
+.nav-item.active { background: var(--color-background-info); color: var(--color-text-info); font-weight: 500; }
+.nav-item i { font-size: 15px; }
+.nav-badge { margin-left: auto; font-size: 11px; background: var(--color-background-secondary); padding: 1px 6px; border-radius: 10px; color: var(--color-text-secondary); }
+.nav-badge.red { background: var(--color-background-danger); color: var(--color-text-danger); }
+
+/* Main */
+.main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+/* Top bar */
+.topbar { background: var(--color-background-primary); border-bottom: 0.5px solid var(--color-border-tertiary); padding: 10px 20px; display: flex; align-items: center; gap: 12px; }
+.topbar-title { font-size: 15px; font-weight: 500; color: var(--color-text-primary); flex: 1; }
+.search-box { display: flex; align-items: center; gap: 6px; background: var(--color-background-secondary); border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-md); padding: 5px 10px; font-size: 13px; color: var(--color-text-secondary); width: 200px; }
+.search-box i { font-size: 14px; }
+.btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: var(--border-radius-md); font-size: 13px; cursor: pointer; border: 0.5px solid var(--color-border-secondary); background: transparent; color: var(--color-text-primary); }
+.btn:hover { background: var(--color-background-secondary); }
+.btn.primary { background: var(--color-background-info); color: var(--color-text-info); border-color: transparent; font-weight: 500; }
+.btn i { font-size: 14px; }
+
+/* Content split */
+.content { display: flex; flex: 1; overflow: hidden; }
+
+/* Left panel - Suite tree */
+.suite-panel { width: 220px; background: var(--color-background-primary); border-right: 0.5px solid var(--color-border-tertiary); overflow-y: auto; padding: 12px 0; flex-shrink: 0; }
+.suite-panel-header { padding: 0 12px 8px; display: flex; align-items: center; justify-content: space-between; }
+.suite-panel-title { font-size: 12px; font-weight: 500; color: var(--color-text-secondary); }
+.suite-panel-add { font-size: 18px; color: var(--color-text-tertiary); cursor: pointer; line-height: 1; }
+.suite-panel-add:hover { color: var(--color-text-info); }
+
+.suite-item { padding: 6px 12px; cursor: pointer; font-size: 13px; color: var(--color-text-secondary); display: flex; align-items: center; gap: 6px; border-left: 2px solid transparent; }
+.suite-item:hover { background: var(--color-background-secondary); color: var(--color-text-primary); }
+.suite-item.active { background: var(--color-background-info); color: var(--color-text-info); border-left-color: #378ADD; }
+.suite-item i { font-size: 14px; flex-shrink: 0; }
+.suite-item .count { margin-left: auto; font-size: 11px; color: var(--color-text-tertiary); }
+.suite-sub { padding-left: 28px; }
+
+/* Test case table */
+.tc-panel { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.tc-toolbar { padding: 10px 16px; display: flex; align-items: center; gap: 8px; background: var(--color-background-primary); border-bottom: 0.5px solid var(--color-border-tertiary); }
+.filter-chip { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 20px; font-size: 12px; cursor: pointer; border: 0.5px solid var(--color-border-tertiary); background: transparent; color: var(--color-text-secondary); }
+.filter-chip.active { background: var(--color-background-info); color: var(--color-text-info); border-color: transparent; }
+.tc-toolbar-right { margin-left: auto; display: flex; gap: 6px; }
+
+.tc-table { flex: 1; overflow-y: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+thead { position: sticky; top: 0; background: var(--color-background-secondary); z-index: 1; }
+th { padding: 8px 12px; text-align: left; font-size: 11px; font-weight: 500; color: var(--color-text-tertiary); border-bottom: 0.5px solid var(--color-border-tertiary); white-space: nowrap; }
+td { padding: 9px 12px; border-bottom: 0.5px solid var(--color-border-tertiary); vertical-align: middle; color: var(--color-text-primary); }
+tr:hover td { background: var(--color-background-secondary); }
+tr.selected td { background: var(--color-background-info); }
+
+.tc-id { font-family: var(--font-mono, monospace); font-size: 11px; color: var(--color-text-tertiary); }
+.tc-title { font-size: 13px; color: var(--color-text-primary); }
+.tc-title small { display: block; font-size: 11px; color: var(--color-text-tertiary); margin-top: 2px; }
+
+/* Badges */
+.badge { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 500; white-space: nowrap; }
+.badge-critical { background: var(--color-background-danger); color: var(--color-text-danger); }
+.badge-high { background: var(--color-background-warning); color: var(--color-text-warning); }
+.badge-medium { background: var(--color-background-info); color: var(--color-text-info); }
+.badge-low { background: var(--color-background-secondary); color: var(--color-text-secondary); }
+.badge-pass { background: var(--color-background-success); color: var(--color-text-success); }
+.badge-fail { background: var(--color-background-danger); color: var(--color-text-danger); }
+.badge-skip { background: var(--color-background-secondary); color: var(--color-text-secondary); }
+.badge-blocked { background: var(--color-background-warning); color: var(--color-text-warning); }
+.badge-notrun { background: var(--color-background-secondary); color: var(--color-text-tertiary); }
+.badge-functional { background: var(--color-background-info); color: var(--color-text-info); }
+.badge-api { background: #e1f5ee; color: #0f6e56; }
+.badge-security { background: #faece7; color: #993c1d; }
+
+/* Status row indicator */
+.status-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+.dot-pass { background: var(--color-text-success); }
+.dot-fail { background: var(--color-text-danger); }
+.dot-blocked { background: var(--color-text-warning); }
+.dot-notrun { background: var(--color-border-secondary); }
+
+/* Stat bar at bottom */
+.stat-bar { background: var(--color-background-primary); border-top: 0.5px solid var(--color-border-tertiary); padding: 8px 16px; display: flex; align-items: center; gap: 20px; font-size: 12px; color: var(--color-text-secondary); }
+.stat-item { display: flex; align-items: center; gap: 5px; }
+.progress-bar { height: 5px; border-radius: 3px; background: var(--color-background-secondary); width: 120px; overflow: hidden; display: flex; }
+.progress-segment { height: 100%; }
+
+/* Right detail panel */
+.detail-panel { width: 260px; background: var(--color-background-primary); border-left: 0.5px solid var(--color-border-tertiary); display: flex; flex-direction: column; overflow-y: auto; flex-shrink: 0; }
+.detail-header { padding: 12px 14px; border-bottom: 0.5px solid var(--color-border-tertiary); display: flex; align-items: center; gap: 8px; }
+.detail-title { font-size: 13px; font-weight: 500; color: var(--color-text-primary); flex: 1; }
+.detail-close { font-size: 18px; color: var(--color-text-tertiary); cursor: pointer; }
+.detail-section { padding: 12px 14px; border-bottom: 0.5px solid var(--color-border-tertiary); }
+.detail-label { font-size: 11px; color: var(--color-text-tertiary); margin-bottom: 4px; }
+.detail-value { font-size: 13px; color: var(--color-text-primary); }
+.detail-meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.step-item { display: flex; gap: 8px; margin-bottom: 8px; align-items: flex-start; }
+.step-num { width: 18px; height: 18px; border-radius: 50%; background: var(--color-background-secondary); display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 500; color: var(--color-text-secondary); flex-shrink: 0; margin-top: 1px; }
+.step-text { font-size: 12px; color: var(--color-text-secondary); line-height: 1.5; }
+</style>
+
+<h2 class="sr-only">QA Dashboard mockup: test case management with sidebar navigation, test suite tree, test case table, and detail panel</h2>
+
+<div class="app">
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-logo">
+        <i class="ti ti-test-pipe" aria-hidden="true"></i>
+        QA Hub
+      </div>
+    </div>
+    <div class="sidebar-section">Workspace</div>
+    <div class="nav-item active"><i class="ti ti-checklist" aria-hidden="true"></i> Test Cases <span class="nav-badge">148</span></div>
+    <div class="nav-item"><i class="ti ti-player-play" aria-hidden="true"></i> Test Runs <span class="nav-badge red">3</span></div>
+    <div class="nav-item"><i class="ti ti-chart-bar" aria-hidden="true"></i> Reports</div>
+    <div class="sidebar-section">Manage</div>
+    <div class="nav-item"><i class="ti ti-folder" aria-hidden="true"></i> Test Suites</div>
+    <div class="nav-item"><i class="ti ti-bug" aria-hidden="true"></i> Defects</div>
+    <div class="nav-item"><i class="ti ti-brand-jira" aria-hidden="true"></i> Jira Sync</div>
+    <div class="sidebar-section">Config</div>
+    <div class="nav-item"><i class="ti ti-settings" aria-hidden="true"></i> Settings</div>
+  </div>
+
+  <!-- Main -->
+  <div class="main">
+    <!-- Topbar -->
+    <div class="topbar">
+      <span class="topbar-title">Test Cases</span>
+      <div class="search-box"><i class="ti ti-search" aria-hidden="true"></i> Search test cases...</div>
+      <button class="btn"><i class="ti ti-upload" aria-hidden="true"></i> Import</button>
+      <button class="btn primary"><i class="ti ti-plus" aria-hidden="true"></i> New Test Case</button>
+    </div>
+
+    <!-- Content split -->
+    <div class="content">
+      <!-- Suite tree panel -->
+      <div class="suite-panel">
+        <div class="suite-panel-header">
+          <span class="suite-panel-title">Test Suites</span>
+          <span class="suite-panel-add">+</span>
+        </div>
+
+        <div class="suite-item active"><i class="ti ti-stack" aria-hidden="true"></i> All Tests <span class="count">148</span></div>
+        <div class="suite-item"><i class="ti ti-folder" aria-hidden="true"></i> Sprint 24 <span class="count">32</span></div>
+        <div class="suite-item suite-sub"><i class="ti ti-file" aria-hidden="true"></i> Login Module <span class="count">12</span></div>
+        <div class="suite-item suite-sub"><i class="ti ti-file" aria-hidden="true"></i> Checkout Flow <span class="count">20</span></div>
+        <div class="suite-item"><i class="ti ti-folder" aria-hidden="true"></i> Regression <span class="count">56</span></div>
+        <div class="suite-item suite-sub"><i class="ti ti-file" aria-hidden="true"></i> Smoke Tests <span class="count">18</span></div>
+        <div class="suite-item suite-sub"><i class="ti ti-file" aria-hidden="true"></i> Full Regression <span class="count">38</span></div>
+        <div class="suite-item"><i class="ti ti-folder" aria-hidden="true"></i> API Testing <span class="count">24</span></div>
+        <div class="suite-item"><i class="ti ti-folder" aria-hidden="true"></i> Security <span class="count">16</span></div>
+        <div class="suite-item"><i class="ti ti-folder" aria-hidden="true"></i> Performance <span class="count">20</span></div>
+      </div>
+
+      <!-- TC table panel -->
+      <div class="tc-panel">
+        <div class="tc-toolbar">
+          <span class="filter-chip active">All</span>
+          <span class="filter-chip">Critical</span>
+          <span class="filter-chip">Failed</span>
+          <span class="filter-chip">Blocked</span>
+          <span class="filter-chip">Not Run</span>
+          <div class="tc-toolbar-right">
+            <button class="btn"><i class="ti ti-filter" aria-hidden="true"></i> Filter</button>
+            <button class="btn"><i class="ti ti-download" aria-hidden="true"></i> Export</button>
+          </div>
+        </div>
+
+        <div class="tc-table">
+          <table>
+            <thead>
+              <tr>
+                <th style="width:28px"><input type="checkbox" /></th>
+                <th style="width:80px">ID</th>
+                <th>Title</th>
+                <th style="width:72px">Priority</th>
+                <th style="width:80px">Type</th>
+                <th style="width:72px">Status</th>
+                <th style="width:80px">Updated</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><input type="checkbox" /></td>
+                <td class="tc-id">TC-001</td>
+                <td><span class="tc-title">Login with valid credentials<small>Login Module · Positive</small></span></td>
+                <td><span class="badge badge-critical">Critical</span></td>
+                <td><span class="badge badge-functional">Functional</span></td>
+                <td><span class="badge badge-pass">Pass</span></td>
+                <td style="font-size:11px;color:var(--color-text-tertiary)">2h ago</td>
+              </tr>
+              <tr class="selected">
+                <td><input type="checkbox" checked /></td>
+                <td class="tc-id">TC-002</td>
+                <td><span class="tc-title">Login with invalid password<small>Login Module · Negative</small></span></td>
+                <td><span class="badge badge-critical">Critical</span></td>
+                <td><span class="badge badge-functional">Functional</span></td>
+                <td><span class="badge badge-fail">Fail</span></td>
+                <td style="font-size:11px;color:var(--color-text-tertiary)">2h ago</td>
+              </tr>
+              <tr>
+                <td><input type="checkbox" /></td>
+                <td class="tc-id">TC-003</td>
+                <td><span class="tc-title">Login with empty email field<small>Login Module · Edge Case</small></span></td>
+                <td><span class="badge badge-high">High</span></td>
+                <td><span class="badge badge-functional">Functional</span></td>
+                <td><span class="badge badge-pass">Pass</span></td>
+                <td style="font-size:11px;color:var(--color-text-tertiary)">3h ago</td>
+              </tr>
+              <tr>
+                <td><input type="checkbox" /></td>
+                <td class="tc-id">TC-004</td>
+                <td><span class="tc-title">POST /api/auth/login returns 401<small>Auth API · Negative</small></span></td>
+                <td><span class="badge badge-high">High</span></td>
+                <td><span class="badge badge-api">API</span></td>
+                <td><span class="badge badge-blocked">Blocked</span></td>
+                <td style="font-size:11px;color:var(--color-text-tertiary)">1d ago</td>
+              </tr>
+              <tr>
+                <td><input type="checkbox" /></td>
+                <td class="tc-id">TC-005</td>
+                <td><span class="tc-title">SQL injection on login form<small>Login Module · Security</small></span></td>
+                <td><span class="badge badge-critical">Critical</span></td>
+                <td><span class="badge badge-security">Security</span></td>
+                <td><span class="badge badge-notrun">Not Run</span></td>
+                <td style="font-size:11px;color:var(--color-text-tertiary)">2d ago</td>
+              </tr>
+              <tr>
+                <td><input type="checkbox" /></td>
+                <td class="tc-id">TC-006</td>
+                <td><span class="tc-title">Checkout with out-of-stock item<small>Checkout Flow · Negative</small></span></td>
+                <td><span class="badge badge-medium">Medium</span></td>
+                <td><span class="badge badge-functional">Functional</span></td>
+                <td><span class="badge badge-pass">Pass</span></td>
+                <td style="font-size:11px;color:var(--color-text-tertiary)">3d ago</td>
+              </tr>
+              <tr>
+                <td><input type="checkbox" /></td>
+                <td class="tc-id">TC-007</td>
+                <td><span class="tc-title">Apply discount coupon at checkout<small>Checkout Flow · Positive</small></span></td>
+                <td><span class="badge badge-high">High</span></td>
+                <td><span class="badge badge-functional">Functional</span></td>
+                <td><span class="badge badge-notrun">Not Run</span></td>
+                <td style="font-size:11px;color:var(--color-text-tertiary)">3d ago</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Stat bar -->
+        <div class="stat-bar">
+          <div class="stat-item">
+            <span class="status-dot dot-pass"></span> Pass: 3
+          </div>
+          <div class="stat-item">
+            <span class="status-dot dot-fail"></span> Fail: 1
+          </div>
+          <div class="stat-item">
+            <span class="status-dot dot-blocked"></span> Blocked: 1
+          </div>
+          <div class="stat-item">
+            <span class="status-dot dot-notrun"></span> Not Run: 2
+          </div>
+          <div style="margin-left:auto;display:flex;align-items:center;gap:8px;">
+            <span>Run coverage</span>
+            <div class="progress-bar">
+              <div class="progress-segment" style="width:43%;background:var(--color-text-success)"></div>
+              <div class="progress-segment" style="width:14%;background:var(--color-text-danger)"></div>
+              <div class="progress-segment" style="width:14%;background:var(--color-text-warning)"></div>
+              <div class="progress-segment" style="width:29%;background:var(--color-border-secondary)"></div>
+            </div>
+            <span>71% executed</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Detail panel -->
+      <div class="detail-panel">
+        <div class="detail-header">
+          <span class="detail-title">TC-002</span>
+          <span class="detail-close">×</span>
+        </div>
+
+        <div class="detail-section">
+          <div class="detail-label">Title</div>
+          <div class="detail-value" style="font-weight:500;font-size:13px">Login with invalid password</div>
+        </div>
+
+        <div class="detail-section">
+          <div class="detail-meta-grid">
+            <div>
+              <div class="detail-label">Priority</div>
+              <span class="badge badge-critical">Critical</span>
+            </div>
+            <div>
+              <div class="detail-label">Status</div>
+              <span class="badge badge-fail">Fail</span>
+            </div>
+            <div>
+              <div class="detail-label">Type</div>
+              <span class="badge badge-functional">Functional</span>
+            </div>
+            <div>
+              <div class="detail-label">Scenario</div>
+              <span class="badge badge-low">Negative</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="detail-section">
+          <div class="detail-label">Precondition</div>
+          <div class="detail-value" style="font-size:12px;line-height:1.5">User exists in system. App accessible at /login.</div>
+        </div>
+
+        <div class="detail-section">
+          <div class="detail-label">Steps</div>
+          <div class="step-item"><div class="step-num">1</div><div class="step-text">Navigate to /login</div></div>
+          <div class="step-item"><div class="step-num">2</div><div class="step-text">Enter valid email, wrong password</div></div>
+          <div class="step-item"><div class="step-num">3</div><div class="step-text">Click Login button</div></div>
+          <div class="step-item"><div class="step-num">4</div><div class="step-text">Observe error message & redirect</div></div>
+        </div>
+
+        <div class="detail-section">
+          <div class="detail-label">Expected result</div>
+          <div class="detail-value" style="font-size:12px;line-height:1.5">Shows "Invalid credentials" error. Stays on login page. No session created.</div>
+        </div>
+
+        <div class="detail-section">
+          <div class="detail-label">Actual result (last run)</div>
+          <div class="detail-value" style="font-size:12px;line-height:1.5;color:var(--color-text-danger)">User redirected to dashboard. Session created. ❌ Bug logged: BUG-142</div>
+        </div>
+
+        <div class="detail-section">
+          <div class="detail-label">Linked Jira</div>
+          <div style="display:flex;align-items:center;gap:6px;margin-top:4px">
+            <i class="ti ti-brand-jira" style="font-size:14px;color:var(--color-text-info)" aria-hidden="true"></i>
+            <span style="font-size:12px;color:var(--color-text-info)">AUTH-142 · Open</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
