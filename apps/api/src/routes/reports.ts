@@ -1,30 +1,84 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { prisma } from '../lib/prisma.js'
 import { ok, badRequest } from '../lib/response.js'
-import { ReportQuerySchema, TrendQuerySchema } from '../types/schemas.js'
+import { z } from 'zod'
+
+function getPeriodRange(period?: string, from?: string, to?: string): { gte?: Date; lte?: Date } | undefined {
+  if (from || to) {
+    return {
+      ...(from ? { gte: new Date(from) } : {}),
+      ...(to ? { lte: new Date(to + 'T23:59:59.999Z') } : {}),
+    }
+  }
+  const now = new Date()
+  now.setHours(23, 59, 59, 999)
+  if (period === 'week') {
+    const start = new Date(now)
+    start.setDate(start.getDate() - 6)
+    start.setHours(0, 0, 0, 0)
+    return { gte: start, lte: now }
+  }
+  if (period === 'month') {
+    const start = new Date(now)
+    start.setDate(start.getDate() - 29)
+    start.setHours(0, 0, 0, 0)
+    return { gte: start, lte: now }
+  }
+  if (period === 'year') {
+    const start = new Date(now)
+    start.setFullYear(start.getFullYear() - 1)
+    start.setHours(0, 0, 0, 0)
+    return { gte: start, lte: now }
+  }
+  return undefined
+}
+
+const SummaryQuerySchema = z.object({
+  period: z.enum(['week', 'month', 'year']).optional(),
+  projectId: z.string().optional(),
+  from: z.string().optional(),
+  to: z.string().optional(),
+})
+
+const TrendQuerySchema = z.object({
+  period: z.enum(['week', 'month', 'year']).default('month'),
+  projectId: z.string().optional(),
+  from: z.string().optional(),
+  to: z.string().optional(),
+})
 
 export const reportRoutes: FastifyPluginAsync = async (fastify) => {
   const auth = { preHandler: [fastify.authenticate] }
 
   fastify.get('/summary', auth, async (request, reply) => {
-    const query = ReportQuerySchema.safeParse(request.query)
+    const query = SummaryQuerySchema.safeParse(request.query)
     if (!query.success) return badRequest(reply, query.error.message)
 
-    const dateFilter = {
-      ...(query.data.from && { gte: query.data.from }),
-      ...(query.data.to && { lte: query.data.to }),
-    }
-    const hasDate = Object.keys(dateFilter).length > 0
+    const { period, projectId, from, to } = query.data
+    const dateRange = getPeriodRange(period, from, to)
 
-    const [totalTc, totalRuns, executions] = await prisma.$transaction([
-      prisma.testCase.count(),
-      prisma.testRun.count({ where: hasDate ? { createdAt: dateFilter } : {} }),
-      prisma.execution.groupBy({
-        by: ['status'],
-        where: hasDate ? { executedAt: dateFilter } : {},
-        _count: { status: true },
+    const projectFilter = projectId ? { projectId } : {}
+
+    const [totalTc, tcCreatedInPeriod, totalBugs, bugsInPeriod, totalRuns] = await prisma.$transaction([
+      prisma.testCase.count({ where: { ...projectFilter } }),
+      prisma.testCase.count({
+        where: { ...projectFilter, ...(dateRange ? { createdAt: dateRange } : {}) },
       }),
+      prisma.bug.count({ where: { ...projectFilter } }),
+      prisma.bug.count({
+        where: { ...projectFilter, ...(dateRange ? { createdAt: dateRange } : {}) },
+      }),
+      prisma.testRun.count({ where: { ...projectFilter, ...(dateRange ? { createdAt: dateRange } : {}) } }),
     ])
+
+    const executions = await prisma.execution.groupBy({
+      by: ['status'],
+      where: {
+        ...(projectId ? { testCase: { projectId } } : {}),
+        ...(dateRange ? { executedAt: dateRange } : {}),
+      },
+      _count: { status: true },
+    })
 
     const statusMap: Record<string, number> = {}
     executions.forEach((e) => { statusMap[e.status] = e._count.status })
@@ -40,9 +94,201 @@ export const reportRoutes: FastifyPluginAsync = async (fastify) => {
 
     return ok(reply, {
       totalTestCases: totalTc,
+      tcCreatedInPeriod,
+      totalBugs,
+      bugsInPeriod,
       totalRuns,
       executions: { total: totalExec, pass, fail, blocked, skip, notRun, executed, passRate },
     })
+  })
+
+  fastify.get('/project-stats', auth, async (request, reply) => {
+    const query = SummaryQuerySchema.safeParse(request.query)
+    if (!query.success) return badRequest(reply, query.error.message)
+
+    const { period, from, to } = query.data
+    const dateRange = getPeriodRange(period, from, to)
+
+    const projects = await prisma.project.findMany({
+      orderBy: { name: 'asc' },
+      select: { id: true, name: true, status: true },
+    })
+
+    const stats = await Promise.all(
+      projects.map(async (p) => {
+        const [tcCount, tcInPeriod, bugCount, bugsInPeriod, openBugs] = await Promise.all([
+          prisma.testCase.count({ where: { projectId: p.id } }),
+          prisma.testCase.count({
+            where: { projectId: p.id, ...(dateRange ? { createdAt: dateRange } : {}) },
+          }),
+          prisma.bug.count({ where: { projectId: p.id } }),
+          prisma.bug.count({
+            where: { projectId: p.id, ...(dateRange ? { createdAt: dateRange } : {}) },
+          }),
+          prisma.bug.count({ where: { projectId: p.id, status: { in: ['OPEN', 'IN_PROGRESS'] } } }),
+        ])
+
+        const executions = await prisma.execution.groupBy({
+          by: ['status'],
+          where: {
+            testCase: { projectId: p.id },
+            ...(dateRange ? { executedAt: dateRange } : {}),
+          },
+          _count: { status: true },
+        })
+
+        const statusMap: Record<string, number> = {}
+        executions.forEach((e) => { statusMap[e.status] = e._count.status })
+
+        const totalExec = Object.values(statusMap).reduce((a, b) => a + b, 0)
+        const pass = statusMap['PASS'] ?? 0
+        const notRun = statusMap['NOT_RUN'] ?? 0
+        const executed = totalExec - notRun
+        const passRate = executed > 0 ? Math.round((pass / executed) * 100) : 0
+
+        return {
+          projectId: p.id,
+          projectName: p.name,
+          projectStatus: p.status,
+          tcCount,
+          tcInPeriod,
+          executed,
+          passRate,
+          bugCount,
+          bugsInPeriod,
+          openBugs,
+        }
+      })
+    )
+
+    return ok(reply, stats)
+  })
+
+  fastify.get('/trend', auth, async (request, reply) => {
+    const query = TrendQuerySchema.safeParse(request.query)
+    if (!query.success) return badRequest(reply, query.error.message)
+
+    const { period, projectId, from, to } = query.data
+    const projectCondition = projectId ? { testCase: { projectId } } : {}
+
+    type TrendPoint = { label: string; pass: number; fail: number; blocked: number; total: number }
+    const points: TrendPoint[] = []
+
+    const now = new Date()
+
+    if (period === 'week') {
+      // Daily for last 7 days
+      for (let i = 6; i >= 0; i--) {
+        const day = new Date(now)
+        day.setDate(day.getDate() - i)
+        const start = new Date(day); start.setHours(0, 0, 0, 0)
+        const end = new Date(day); end.setHours(23, 59, 59, 999)
+
+        const execs = await prisma.execution.groupBy({
+          by: ['status'],
+          where: { ...projectCondition, executedAt: { gte: start, lte: end }, status: { not: 'NOT_RUN' } },
+          _count: { status: true },
+        })
+
+        const map: Record<string, number> = {}
+        execs.forEach((e) => { map[e.status] = e._count.status })
+
+        points.push({
+          label: start.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }),
+          pass: map['PASS'] ?? 0,
+          fail: map['FAIL'] ?? 0,
+          blocked: map['BLOCKED'] ?? 0,
+          total: Object.values(map).reduce((a, b) => a + b, 0),
+        })
+      }
+    } else if (period === 'month') {
+      // Weekly for last 4 weeks
+      for (let i = 3; i >= 0; i--) {
+        const end = new Date(now)
+        end.setDate(end.getDate() - i * 7)
+        end.setHours(23, 59, 59, 999)
+        const start = new Date(end)
+        start.setDate(start.getDate() - 6)
+        start.setHours(0, 0, 0, 0)
+
+        const execs = await prisma.execution.groupBy({
+          by: ['status'],
+          where: { ...projectCondition, executedAt: { gte: start, lte: end }, status: { not: 'NOT_RUN' } },
+          _count: { status: true },
+        })
+
+        const map: Record<string, number> = {}
+        execs.forEach((e) => { map[e.status] = e._count.status })
+
+        points.push({
+          label: `${start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${end.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`,
+          pass: map['PASS'] ?? 0,
+          fail: map['FAIL'] ?? 0,
+          blocked: map['BLOCKED'] ?? 0,
+          total: Object.values(map).reduce((a, b) => a + b, 0),
+        })
+      }
+    } else if (period === 'year') {
+      // Monthly for last 12 months
+      for (let i = 11; i >= 0; i--) {
+        const d = new Date(now)
+        d.setMonth(d.getMonth() - i)
+        const start = new Date(d.getFullYear(), d.getMonth(), 1)
+        const end = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59, 999)
+
+        const execs = await prisma.execution.groupBy({
+          by: ['status'],
+          where: { ...projectCondition, executedAt: { gte: start, lte: end }, status: { not: 'NOT_RUN' } },
+          _count: { status: true },
+        })
+
+        const map: Record<string, number> = {}
+        execs.forEach((e) => { map[e.status] = e._count.status })
+
+        points.push({
+          label: start.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }),
+          pass: map['PASS'] ?? 0,
+          fail: map['FAIL'] ?? 0,
+          blocked: map['BLOCKED'] ?? 0,
+          total: Object.values(map).reduce((a, b) => a + b, 0),
+        })
+      }
+    } else {
+      // custom from/to — weekly grouping
+      const rangeFrom = from ? new Date(from) : (() => { const d = new Date(now); d.setDate(d.getDate() - 27); return d })()
+      const rangeTo = to ? new Date(to + 'T23:59:59.999Z') : now
+      const diffDays = Math.ceil((rangeTo.getTime() - rangeFrom.getTime()) / (1000 * 60 * 60 * 24))
+      const numWeeks = Math.max(1, Math.ceil(diffDays / 7))
+
+      for (let i = 0; i < numWeeks; i++) {
+        const start = new Date(rangeFrom)
+        start.setDate(start.getDate() + i * 7)
+        start.setHours(0, 0, 0, 0)
+        const end = new Date(start)
+        end.setDate(end.getDate() + 6)
+        end.setHours(23, 59, 59, 999)
+        if (end > rangeTo) end.setTime(rangeTo.getTime())
+
+        const execs = await prisma.execution.groupBy({
+          by: ['status'],
+          where: { ...projectCondition, executedAt: { gte: start, lte: end }, status: { not: 'NOT_RUN' } },
+          _count: { status: true },
+        })
+
+        const map: Record<string, number> = {}
+        execs.forEach((e) => { map[e.status] = e._count.status })
+
+        points.push({
+          label: `${start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${end.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`,
+          pass: map['PASS'] ?? 0,
+          fail: map['FAIL'] ?? 0,
+          blocked: map['BLOCKED'] ?? 0,
+          total: Object.values(map).reduce((a, b) => a + b, 0),
+        })
+      }
+    }
+
+    return ok(reply, points)
   })
 
   fastify.get('/bug-summary', auth, async (_request, reply) => {
@@ -101,9 +347,13 @@ export const reportRoutes: FastifyPluginAsync = async (fastify) => {
 
         const counts = { pass: 0, fail: 0, skip: 0, blocked: 0, notRun: 0 }
         for (const tc of testCases) {
-          const status = (tc.executions[0]?.status ?? 'NOT_RUN') as keyof typeof counts
-          const key = status === 'NOT_RUN' ? 'notRun' : status.toLowerCase() as keyof typeof counts
-          counts[key] = (counts[key] ?? 0) + 1
+          const rawStatus = tc.executions[0]?.status ?? 'NOT_RUN'
+          if (rawStatus === 'NOT_RUN') {
+            counts.notRun++
+          } else {
+            const key = rawStatus.toLowerCase() as 'pass' | 'fail' | 'skip' | 'blocked'
+            counts[key] = (counts[key] ?? 0) + 1
+          }
         }
 
         const total = testCases.length
@@ -170,44 +420,5 @@ export const reportRoutes: FastifyPluginAsync = async (fastify) => {
       coveragePercent: total > 0 ? Math.round((executed / total) * 100) : 0,
       byPriority,
     })
-  })
-
-  fastify.get('/trend', auth, async (request, reply) => {
-    const query = TrendQuerySchema.safeParse(request.query)
-    if (!query.success) return badRequest(reply, query.error.message)
-
-    const weeks = query.data.weeks
-    const now = new Date()
-    const points: Array<{
-      week: string; pass: number; fail: number; blocked: number; total: number
-    }> = []
-
-    for (let i = weeks - 1; i >= 0; i--) {
-      const from = new Date(now)
-      from.setDate(from.getDate() - i * 7 - 7)
-      from.setHours(0, 0, 0, 0)
-      const to = new Date(now)
-      to.setDate(to.getDate() - i * 7)
-      to.setHours(23, 59, 59, 999)
-
-      const execs = await prisma.execution.groupBy({
-        by: ['status'],
-        where: { executedAt: { gte: from, lte: to }, status: { not: 'NOT_RUN' } },
-        _count: { status: true },
-      })
-
-      const map: Record<string, number> = {}
-      execs.forEach((e) => { map[e.status] = e._count.status })
-
-      points.push({
-        week: from.toISOString().split('T')[0],
-        pass: map['PASS'] ?? 0,
-        fail: map['FAIL'] ?? 0,
-        blocked: map['BLOCKED'] ?? 0,
-        total: Object.values(map).reduce((a, b) => a + b, 0),
-      })
-    }
-
-    return ok(reply, points)
   })
 }

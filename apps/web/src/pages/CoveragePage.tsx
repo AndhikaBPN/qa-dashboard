@@ -26,7 +26,7 @@ const STAT_CONFIGS = [
   { key: 'bugs',    label: 'Bugs',    color: 'text-orange-400',          dot: 'bg-orange-400' },
 ] as const
 
-function CoverageRing({ passRate, coverage }: { passRate: number; coverage: number }) {
+function CoverageRing({ passRate }: { passRate: number; coverage: number }) {
   const r = 28
   const circ = 2 * Math.PI * r
   const passOffset = circ - (passRate / 100) * circ

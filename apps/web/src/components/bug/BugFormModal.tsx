@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
-import { X, Plus } from 'lucide-react'
+import { X, Plus, Clipboard, Image, Link } from 'lucide-react'
 
 export interface BugFormBug {
   id: string
@@ -18,16 +18,8 @@ export interface BugFormBug {
   testCaseId: string | null
 }
 
-interface User {
-  id: string
-  name: string
-}
-
-interface TestCase {
-  id: string
-  tcId: string
-  title: string
-}
+interface User { id: string; name: string }
+interface TestCase { id: string; tcId: string; title: string }
 
 const SEVERITIES = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW']
 const PRIORITIES = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW', 'LOWEST']
@@ -45,8 +37,23 @@ interface Props {
   onClose: () => void
 }
 
+function isDataUrl(s: string) { return s.startsWith('data:image/') }
+function isHttpUrl(s: string) { return s.startsWith('http://') || s.startsWith('https://') }
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result as string)
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
+}
+
 export default function BugFormModal({ projectId, editBug, defaultTestCaseId, users, onClose }: Props) {
   const qc = useQueryClient()
+  const modalRef = useRef<HTMLDivElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [dragOver, setDragOver] = useState(false)
 
   const [form, setForm] = useState({
     title: editBug?.title ?? '',
@@ -65,13 +72,14 @@ export default function BugFormModal({ projectId, editBug, defaultTestCaseId, us
   const [attachments, setAttachments] = useState<string[]>(
     editBug?.attachment?.length ? editBug.attachment : []
   )
+  const [urlInput, setUrlInput] = useState('')
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null)
 
   const { data: tcData } = useQuery({
     queryKey: ['test-cases-bug-picker', projectId],
     queryFn: () =>
       api.get('/test-cases', { params: { projectId, limit: 200 } }).then((r) => r.data.data as TestCase[]),
   })
-
   const testCases: TestCase[] = tcData ?? []
 
   const createMut = useMutation({
@@ -83,19 +91,65 @@ export default function BugFormModal({ projectId, editBug, defaultTestCaseId, us
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['bugs'] }); onClose() },
   })
 
+  // Global paste listener on modal — capture image from clipboard
+  useEffect(() => {
+    const el = modalRef.current
+    if (!el) return
+    async function handlePaste(e: ClipboardEvent) {
+      const items = e.clipboardData?.items
+      if (!items) return
+      for (const item of Array.from(items)) {
+        if (item.type.startsWith('image/')) {
+          e.preventDefault()
+          const file = item.getAsFile()
+          if (!file) continue
+          const dataUrl = await readFileAsDataUrl(file)
+          setAttachments((a) => [...a, dataUrl])
+        }
+      }
+    }
+    el.addEventListener('paste', handlePaste)
+    return () => el.removeEventListener('paste', handlePaste)
+  }, [])
+
+  async function handleDrop(e: React.DragEvent) {
+    e.preventDefault()
+    setDragOver(false)
+    const files = Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith('image/'))
+    for (const file of files) {
+      const dataUrl = await readFileAsDataUrl(file)
+      setAttachments((a) => [...a, dataUrl])
+    }
+  }
+
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []).filter((f) => f.type.startsWith('image/'))
+    for (const file of files) {
+      const dataUrl = await readFileAsDataUrl(file)
+      setAttachments((a) => [...a, dataUrl])
+    }
+    e.target.value = ''
+  }
+
+  function addUrlAttachment() {
+    const url = urlInput.trim()
+    if (!url) return
+    setAttachments((a) => [...a, url])
+    setUrlInput('')
+  }
+
+  function removeAttachment(i: number) { setAttachments((a) => a.filter((_, idx) => idx !== i)) }
+
   function addStep() { setSteps((s) => [...s, '']) }
   function removeStep(i: number) { setSteps((s) => s.filter((_, idx) => idx !== i)) }
   function updateStep(i: number, v: string) { setSteps((s) => s.map((x, idx) => (idx === i ? v : x))) }
-  function addAttachment() { setAttachments((a) => [...a, '']) }
-  function removeAttachment(i: number) { setAttachments((a) => a.filter((_, idx) => idx !== i)) }
-  function updateAttachment(i: number, v: string) { setAttachments((a) => a.map((x, idx) => (idx === i ? v : x))) }
 
   function submit() {
     const payload = {
       ...form,
       projectId,
       steps: steps.filter((s) => s.trim()),
-      attachment: attachments.filter((a) => a.trim()),
+      attachment: attachments,
       assigneeId: form.assigneeId || null,
       testCaseId: form.testCaseId || null,
     }
@@ -108,7 +162,7 @@ export default function BugFormModal({ projectId, editBug, defaultTestCaseId, us
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="bg-background border rounded-lg shadow-xl w-full max-w-2xl max-h-[92vh] flex flex-col">
+      <div ref={modalRef} className="bg-background border rounded-lg shadow-xl w-full max-w-2xl max-h-[92vh] flex flex-col" tabIndex={-1}>
         <div className="flex items-center justify-between px-5 py-4 border-b">
           <h2 className="text-sm font-semibold">{editBug ? 'Edit Bug' : 'Report New Bug'}</h2>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
@@ -139,9 +193,7 @@ export default function BugFormModal({ projectId, editBug, defaultTestCaseId, us
             >
               <option value="">— Not linked to a test case —</option>
               {testCases.map((tc) => (
-                <option key={tc.id} value={tc.id}>
-                  {tc.tcId} — {tc.title}
-                </option>
+                <option key={tc.id} value={tc.id}>{tc.tcId} — {tc.title}</option>
               ))}
             </select>
           </div>
@@ -244,29 +296,99 @@ export default function BugFormModal({ projectId, editBug, defaultTestCaseId, us
 
           {/* Attachments */}
           <div>
-            <div className="flex items-center justify-between mb-2">
-              <label className="text-xs font-medium">Attachments (URLs)</label>
-              <button onClick={addAttachment} className="text-xs text-primary hover:underline flex items-center gap-1">
-                <Plus className="h-3 w-3" /> Add URL
-              </button>
-            </div>
-            <div className="space-y-1.5">
-              {attachments.map((url, i) => (
-                <div key={i} className="flex items-center gap-2">
-                  <input
-                    value={url}
-                    onChange={(e) => updateAttachment(i, e.target.value)}
-                    className="flex-1 border rounded px-2.5 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-primary bg-background"
-                    placeholder="https://..."
-                  />
-                  <button onClick={() => removeAttachment(i)} className="text-muted-foreground hover:text-destructive">
-                    <X className="h-3.5 w-3.5" />
-                  </button>
+            <label className="text-xs font-medium mb-2 block">Attachments</label>
+
+            {/* Paste / Drop zone */}
+            <div
+              className={`relative border-2 border-dashed rounded-lg p-4 text-center transition-colors cursor-pointer mb-3 ${
+                dragOver
+                  ? 'border-primary bg-primary/5'
+                  : 'border-muted hover:border-muted-foreground/40 hover:bg-muted/20'
+              }`}
+              onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={handleDrop}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                onChange={handleFileChange}
+              />
+              <div className="flex flex-col items-center gap-1.5 pointer-events-none">
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <Clipboard className="h-4 w-4" />
+                  <Image className="h-4 w-4" />
                 </div>
-              ))}
-              {attachments.length === 0 && (
-                <p className="text-xs text-muted-foreground italic">No attachments</p>
+                <p className="text-xs text-muted-foreground">
+                  Paste screenshot <kbd className="px-1 py-0.5 text-[10px] border rounded bg-muted font-mono">Ctrl+V</kbd>
+                  {' '}· drag & drop · or click to browse
+                </p>
+              </div>
+            </div>
+
+            {/* Thumbnail grid for image attachments */}
+            {attachments.filter(isDataUrl).length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-3">
+                {attachments.map((att, i) =>
+                  isDataUrl(att) ? (
+                    <div key={i} className="relative group">
+                      <button onClick={() => setLightboxSrc(att)} className="block">
+                        <img
+                          src={att}
+                          alt={`attachment ${i + 1}`}
+                          className="h-20 w-28 object-cover rounded-md border group-hover:opacity-80 transition-opacity"
+                        />
+                        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                          <span className="text-[10px] bg-black/60 text-white px-1.5 py-0.5 rounded">View</span>
+                        </div>
+                      </button>
+                      <button
+                        onClick={() => removeAttachment(i)}
+                        className="absolute -top-1.5 -right-1.5 bg-destructive text-destructive-foreground rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity z-10"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ) : null
+                )}
+              </div>
+            )}
+
+            {/* URL attachments */}
+            <div className="space-y-1.5">
+              {attachments.map((att, i) =>
+                isHttpUrl(att) ? (
+                  <div key={i} className="flex items-center gap-2">
+                    <Link className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                    <span className="flex-1 text-xs text-primary truncate">{att}</span>
+                    <button onClick={() => removeAttachment(i)} className="text-muted-foreground hover:text-destructive shrink-0">
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ) : null
               )}
+            </div>
+
+            {/* Add URL input */}
+            <div className="flex items-center gap-2 mt-2">
+              <input
+                value={urlInput}
+                onChange={(e) => setUrlInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && addUrlAttachment()}
+                placeholder="Or paste a URL and press Enter…"
+                className="flex-1 border rounded px-2.5 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-primary bg-background"
+              />
+              <button
+                onClick={addUrlAttachment}
+                disabled={!urlInput.trim()}
+                className="px-2.5 py-1 text-xs border rounded-md hover:bg-muted disabled:opacity-40 flex items-center gap-1"
+              >
+                <Plus className="h-3 w-3" /> Add
+              </button>
             </div>
           </div>
         </div>
@@ -283,6 +405,38 @@ export default function BugFormModal({ projectId, editBug, defaultTestCaseId, us
             {editBug ? 'Save Changes' : 'Report Bug'}
           </button>
         </div>
+      </div>
+
+      {/* Lightbox */}
+      {lightboxSrc && <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />}
+    </div>
+  )
+}
+
+function ImageLightbox({ src, onClose }: { src: string; onClose: () => void }) {
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  return (
+    <div
+      className="fixed inset-0 z-[70] flex items-center justify-center bg-black/80 p-4"
+      onClick={onClose}
+    >
+      <div className="relative max-w-[90vw] max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
+        <img
+          src={src}
+          alt="attachment preview"
+          className="max-w-full max-h-[85vh] rounded-lg shadow-2xl object-contain"
+        />
+        <button
+          onClick={onClose}
+          className="absolute -top-3 -right-3 bg-background border rounded-full p-1.5 shadow-lg hover:bg-muted"
+        >
+          <X className="h-4 w-4" />
+        </button>
       </div>
     </div>
   )

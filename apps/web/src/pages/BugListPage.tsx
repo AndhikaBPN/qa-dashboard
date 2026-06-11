@@ -55,6 +55,37 @@ const STATUS_LABELS: Record<string, string> = {
   OPEN: 'Open', IN_PROGRESS: 'In Progress', RESOLVED: 'Resolved', CLOSED: 'Closed',
 }
 
+// ─── Image Lightbox ───────────────────────────────────────────────────────────
+
+function ImageLightbox({ src, onClose }: { src: string; onClose: () => void }) {
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-4"
+      onClick={onClose}
+    >
+      <div className="relative max-w-[90vw] max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
+        <img
+          src={src}
+          alt="attachment"
+          className="max-w-full max-h-[85vh] rounded-lg shadow-2xl object-contain"
+        />
+        <button
+          onClick={onClose}
+          className="absolute -top-3 -right-3 bg-background border rounded-full p-1.5 shadow-lg hover:bg-muted"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ─── Bug Detail Panel ─────────────────────────────────────────────────────────
 
 function BugDetailPanel({ bug, onClose, onEdit, onDelete }: {
@@ -64,6 +95,7 @@ function BugDetailPanel({ bug, onClose, onEdit, onDelete }: {
   onDelete: () => void
 }) {
   const qc = useQueryClient()
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null)
 
   const updateStatusMut = useMutation({
     mutationFn: (status: string) => api.put(`/bugs/${bug.id}`, { status }),
@@ -191,8 +223,26 @@ function BugDetailPanel({ bug, onClose, onEdit, onDelete }: {
                 <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
                   Attachments
                 </p>
+                {/* Image thumbnails */}
+                {bug.attachment.some((a) => a.startsWith('data:image/')) && (
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    {bug.attachment.filter((a) => a.startsWith('data:image/')).map((src, i) => (
+                      <button key={i} onClick={() => setLightboxSrc(src)} className="group relative">
+                        <img
+                          src={src}
+                          alt={`attachment ${i + 1}`}
+                          className="h-20 w-28 object-cover rounded-md border group-hover:opacity-80 transition-opacity"
+                        />
+                        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                          <span className="text-[10px] bg-black/60 text-white px-1.5 py-0.5 rounded">View</span>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {/* URL links */}
                 <div className="space-y-1">
-                  {bug.attachment.map((url, i) => (
+                  {bug.attachment.filter((a) => !a.startsWith('data:image/')).map((url, i) => (
                     <a key={i} href={url} target="_blank" rel="noopener noreferrer"
                       className="text-xs text-primary hover:underline block truncate">
                       {url}
@@ -204,6 +254,7 @@ function BugDetailPanel({ bug, onClose, onEdit, onDelete }: {
           </div>
         </div>
       </div>
+      {lightboxSrc && <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />}
     </div>
   )
 }

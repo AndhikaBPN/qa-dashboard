@@ -425,7 +425,7 @@ function CreateRunModal({
 // ─── Suite Detail Panel ───────────────────────────────────────────────────────
 
 function SuiteDetailPanel({
-  runId, projectId, onClose, onReportBug,
+  runId, projectId: _projectId, onClose, onReportBug,
 }: {
   runId: string
   projectId: string

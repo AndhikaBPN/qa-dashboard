@@ -14,7 +14,7 @@ import { reportRoutes } from './routes/reports.js'
 import { jiraRoutes } from './routes/jira.js'
 
 export async function buildApp() {
-  const app = Fastify({ logger: true })
+  const app = Fastify({ logger: true, bodyLimit: 20 * 1024 * 1024 })
 
   await app.register(cors, {
     origin: process.env.CORS_ORIGIN ?? 'http://localhost:5173',

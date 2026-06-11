@@ -10,6 +10,7 @@ import BugListPage from '@/pages/BugListPage'
 import TestCasesPage from '@/pages/TestCasesPage'
 import TestRunsPage from '@/pages/TestRunsPage'
 import ReportsPage from '@/pages/ReportsPage'
+import ExportPage from '@/pages/ExportPage'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const token = useAuthStore((s) => s.accessToken)
@@ -36,6 +37,7 @@ export default function App() {
                 <Route path="/test-cases" element={<TestCasesPage />} />
                 <Route path="/test-runs" element={<TestRunsPage />} />
                 <Route path="/reports" element={<ReportsPage />} />
+                <Route path="/export" element={<ExportPage />} />
               </Routes>
             </AppShell>
           </ProtectedRoute>
