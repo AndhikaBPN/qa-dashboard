@@ -1,0 +1,65 @@
+import type { FastifyPluginAsync } from 'fastify'
+import bcrypt from 'bcryptjs'
+import { prisma } from '../lib/prisma.js'
+import { ok, created, badRequest, unauthorized } from '../lib/response.js'
+import { signAccess, signRefresh, verifyRefresh } from '../middleware/auth.js'
+import { LoginSchema, RefreshSchema } from '../types/schemas.js'
+
+export const authRoutes: FastifyPluginAsync = async (fastify) => {
+  // POST /auth/login
+  fastify.post('/login', async (request, reply) => {
+    const body = LoginSchema.safeParse(request.body)
+    if (!body.success) return badRequest(reply, body.error.message)
+
+    const user = await prisma.user.findUnique({ where: { email: body.data.email } })
+    if (!user) return unauthorized(reply, 'Invalid credentials')
+
+    const valid = await bcrypt.compare(body.data.password, user.passwordHash)
+    if (!valid) return unauthorized(reply, 'Invalid credentials')
+
+    const payload = { sub: user.id, email: user.email, role: user.role }
+    const accessToken = signAccess(payload)
+    const refreshToken = signRefresh(payload)
+
+    return ok(reply, {
+      accessToken,
+      refreshToken,
+      user: { id: user.id, email: user.email, name: user.name, role: user.role },
+    })
+  })
+
+  // POST /auth/refresh
+  fastify.post('/refresh', async (request, reply) => {
+    const body = RefreshSchema.safeParse(request.body)
+    if (!body.success) return badRequest(reply, body.error.message)
+
+    try {
+      const payload = verifyRefresh(body.data.refreshToken)
+      const user = await prisma.user.findUnique({ where: { id: payload.sub } })
+      if (!user) return unauthorized(reply)
+
+      const newPayload = { sub: user.id, email: user.email, role: user.role }
+      return ok(reply, {
+        accessToken: signAccess(newPayload),
+        refreshToken: signRefresh(newPayload),
+      })
+    } catch {
+      return unauthorized(reply, 'Invalid or expired refresh token')
+    }
+  })
+
+  // POST /auth/logout  (client drops tokens; endpoint for audit log / future blocklist)
+  fastify.post('/logout', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    return reply.code(204).send()
+  })
+
+  // GET /auth/me
+  fastify.get('/me', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const user = await prisma.user.findUnique({
+      where: { id: request.user.sub },
+      select: { id: true, email: true, name: true, role: true, createdAt: true },
+    })
+    if (!user) return unauthorized(reply)
+    return ok(reply, user)
+  })
+}
