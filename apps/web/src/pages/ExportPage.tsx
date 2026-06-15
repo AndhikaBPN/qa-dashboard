@@ -836,7 +836,7 @@ export default function ExportPage() {
 
   const tcFolders = filterSuitesByType(filterSuitesByProject(allSuites, tcProject), 'CASE_FOLDER')
   const stFolders = filterSuitesByType(filterSuitesByProject(allSuites, stProject), 'RUN_FOLDER')
-  const bgFolders = filterSuitesByType(filterSuitesByProject(allSuites, bgProject), 'RUN_FOLDER')
+  const bgFolders = filterSuitesByType(filterSuitesByProject(allSuites, bgProject), 'CASE_FOLDER')
 
   const flatTcFolders = flattenSuiteTree(tcFolders)
   const flatBgFolders = flattenSuiteTree(bgFolders)
