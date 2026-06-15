@@ -30,12 +30,27 @@ type UserActivityData = {
   overallTotals: ActivityWeek
 }
 
-function buildParams(period: Period, projectId: string, from: string, to: string) {
-  const p: Record<string, string> = {}
-  if (period) p.period = period
+type FilterMode = 'preset' | 'single' | 'range'
+
+function buildParams(
+  mode: FilterMode,
+  period: Period,
+  projectId: string,
+  single: string,
+  from: string,
+  to: string,
+  extra?: Record<string, string>,
+) {
+  const p: Record<string, string> = { ...extra }
   if (projectId) p.projectId = projectId
-  if (from) { p.from = from; delete p.period }
-  if (to) { p.to = to; delete p.period }
+  if (mode === 'preset') {
+    p.period = period
+  } else if (mode === 'single' && single) {
+    p.from = single; p.to = single
+  } else if (mode === 'range') {
+    if (from) p.from = from
+    if (to) p.to = to
+  }
   return new URLSearchParams(p).toString()
 }
 
@@ -61,13 +76,14 @@ const PERIOD_TABS: { key: Period; label: string }[] = [
 ]
 
 export default function ReportsPage() {
+  const [filterMode, setFilterMode] = useState<FilterMode>('preset')
   const [period, setPeriod] = useState<Period>('week')
-  const [projectFilter, setProjectFilter] = useState('')
+  const [singleDate, setSingleDate] = useState('')
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
-  const [customActive, setCustomActive] = useState(false)
+  const [projectFilter, setProjectFilter] = useState('')
 
-  const qs = buildParams(customActive ? ('custom' as Period) : period, projectFilter, from, to)
+  const qs = buildParams(filterMode, period, projectFilter, singleDate, from, to)
 
   const { data: summaryData, isLoading: summaryLoading } = useQuery({
     queryKey: ['report-summary', qs],
@@ -79,13 +95,10 @@ export default function ReportsPage() {
     queryFn: () => api.get(`/reports/project-stats?${qs}`).then((r) => r.data.data),
   })
 
-  const trendQs = (() => {
-    const p: Record<string, string> = { period: customActive ? 'month' : period }
-    if (projectFilter) p.projectId = projectFilter
-    if (from) p.from = from
-    if (to) p.to = to
-    return new URLSearchParams(p).toString()
-  })()
+  // Trend needs a period hint for grouping granularity; single/range → weekly grouping
+  const trendQs = buildParams(filterMode, period, projectFilter, singleDate, from, to,
+    filterMode !== 'preset' ? { period: 'month' } : undefined,
+  )
 
   const { data: trendData, isLoading: trendLoading } = useQuery({
     queryKey: ['report-trend', trendQs],
@@ -98,24 +111,14 @@ export default function ReportsPage() {
   })
 
   const { data: bugsBySuite, isLoading: bugsLoading } = useQuery({
-    queryKey: ['report-bugs-by-suite', projectFilter],
-    queryFn: () => {
-      const p = new URLSearchParams()
-      if (projectFilter) p.set('projectId', projectFilter)
-      return api.get(`/reports/bugs-by-suite?${p}`).then((r) => r.data.data as BugsBySuiteData)
-    },
+    queryKey: ['report-bugs-by-suite', qs],
+    queryFn: () => api.get(`/reports/bugs-by-suite?${qs}`).then((r) => r.data.data as BugsBySuiteData),
   })
 
   const [activityWeeks, setActivityWeeks] = useState(4)
   const [showNonEmpty, setShowNonEmpty] = useState(true)
 
-  const activityQs = (() => {
-    const p: Record<string, string> = { weeks: String(activityWeeks) }
-    if (projectFilter) p.projectId = projectFilter
-    if (customActive && from) p.from = from
-    if (customActive && to) p.to = to
-    return new URLSearchParams(p).toString()
-  })()
+  const activityQs = buildParams(filterMode, period, projectFilter, singleDate, from, to, { weeks: String(activityWeeks) })
 
   const { data: activityData, isLoading: activityLoading } = useQuery({
     queryKey: ['report-user-activity', activityQs],
@@ -123,7 +126,11 @@ export default function ReportsPage() {
   })
 
   const s = summaryData
-  const periodLabel = customActive ? 'custom range' : period === 'week' ? 'this week' : period === 'month' ? 'this month' : 'this year'
+  const periodLabel = filterMode === 'single' && singleDate
+    ? singleDate
+    : filterMode === 'range'
+    ? `${from || '…'} – ${to || '…'}`
+    : period === 'week' ? 'this week' : period === 'month' ? 'this month' : 'this year'
 
   return (
     <div className="space-y-6">
@@ -131,16 +138,16 @@ export default function ReportsPage() {
         <h1 className="text-xl font-semibold">Reports</h1>
       </div>
 
-      {/* Filter bar */}
+      {/* ── Unified filter bar ──────────────────────────────────────── */}
       <div className="flex flex-wrap gap-3 items-center p-3 bg-card border rounded-lg">
-        {/* Period tabs */}
+        {/* Mode tabs */}
         <div className="flex gap-1 bg-muted rounded-md p-1">
           {PERIOD_TABS.map((t) => (
             <button
               key={t.key}
-              onClick={() => { setPeriod(t.key); setCustomActive(false); setFrom(''); setTo('') }}
+              onClick={() => { setFilterMode('preset'); setPeriod(t.key) }}
               className={`px-3 py-1 text-xs rounded transition-colors ${
-                !customActive && period === t.key
+                filterMode === 'preset' && period === t.key
                   ? 'bg-background text-foreground shadow-sm'
                   : 'text-muted-foreground hover:text-foreground'
               }`}
@@ -149,18 +156,37 @@ export default function ReportsPage() {
             </button>
           ))}
           <button
-            onClick={() => setCustomActive(true)}
+            onClick={() => setFilterMode('single')}
             className={`px-3 py-1 text-xs rounded transition-colors ${
-              customActive
+              filterMode === 'single'
                 ? 'bg-background text-foreground shadow-sm'
                 : 'text-muted-foreground hover:text-foreground'
             }`}
           >
-            Custom
+            Single Date
+          </button>
+          <button
+            onClick={() => setFilterMode('range')}
+            className={`px-3 py-1 text-xs rounded transition-colors ${
+              filterMode === 'range'
+                ? 'bg-background text-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            Date Range
           </button>
         </div>
 
-        {customActive && (
+        {filterMode === 'single' && (
+          <input
+            type="date"
+            value={singleDate}
+            onChange={(e) => setSingleDate(e.target.value)}
+            className="h-8 text-xs px-2 bg-background border rounded-md"
+          />
+        )}
+
+        {filterMode === 'range' && (
           <>
             <input
               type="date"
