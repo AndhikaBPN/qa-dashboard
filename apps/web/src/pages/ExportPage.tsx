@@ -175,36 +175,96 @@ function exportTcXlsx(tcs: TC[], projectName: string, filename: string) {
   XLSX.writeFile(wb, filename)
 }
 
-function exportBugXlsx(bugs: BugItem[], projectName: string, filename: string) {
-  const wb = XLSX.utils.book_new()
+async function exportBugXlsx(bugs: BugItem[], projectName: string, filename: string) {
   const byStatus = bugs.reduce<Record<string, number>>((acc, b) => {
     acc[b.status] = (acc[b.status] ?? 0) + 1; return acc
   }, {})
 
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([
-    { Metric: 'Project', Value: projectName },
-    { Metric: 'Generated', Value: new Date().toLocaleString() },
-    { Metric: 'Total Bugs', Value: bugs.length },
-    ...Object.entries(byStatus).map(([s, n]) => ({ Metric: s, Value: n })),
-  ]), 'Summary')
+  const wb = new ExcelJS.Workbook()
 
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(bugs.map((b) => ({
-    'Bug-ID': b.bugId,
-    'Title': b.title,
-    'Severity': b.severity,
-    'Priority': b.priority,
-    'Type': b.type,
-    'Status': b.status,
-    'Steps to Reproduce': bugStepsToText(b.steps),
-    'Expected Result': b.expectedResult,
-    'Actual Result': b.actualResult,
-    'Reporter': b.reporter?.name ?? '',
-    'Assignee': b.assignee?.name ?? '',
-    'Linked TC': b.testCase?.tcId ?? '',
-    'Created At': b.createdAt ? new Date(b.createdAt).toLocaleDateString() : '',
-  }))), 'Bugs')
+  /* ── Summary sheet ── */
+  const ws = wb.addWorksheet('Summary')
+  ws.columns = [{ key: 'a', width: 20 }, { key: 'b', width: 20 }]
 
-  XLSX.writeFile(wb, filename)
+  const titleRow = ws.addRow(['Bug Report', ''])
+  ws.mergeCells(`A${titleRow.number}:B${titleRow.number}`)
+  titleRow.getCell(1).fill = fill(C.navy)
+  titleRow.getCell(1).font = { bold: true, size: 14, color: { argb: C.white } }
+  titleRow.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' }
+  titleRow.height = 28
+
+  const metaRows: [string, string | number][] = [
+    ['Project', projectName],
+    ['Generated', new Date().toLocaleString()],
+    ['Total Bugs', bugs.length],
+    ...Object.entries(byStatus).map(([s, n]) => [s, n] as [string, number]),
+  ]
+  for (const [label, value] of metaRows) {
+    const r = ws.addRow([label, value])
+    r.getCell(1).fill = fill(C.navy)
+    r.getCell(1).font = { bold: true, color: { argb: C.white } }
+    r.getCell(2).fill = fill('FFE2E8F0')
+    r.getCell(2).font = { color: { argb: C.grayText } }
+    r.height = 18
+  }
+  for (let r = 1; r <= ws.rowCount; r++) {
+    for (let c = 1; c <= 2; c++) {
+      const cell = ws.getRow(r).getCell(c)
+      cell.border = { top: { style: 'thin', color: { argb: 'FFCBD5E1' } }, left: { style: 'thin', color: { argb: 'FFCBD5E1' } }, bottom: { style: 'thin', color: { argb: 'FFCBD5E1' } }, right: { style: 'thin', color: { argb: 'FFCBD5E1' } } }
+    }
+  }
+
+  /* ── Bugs sheet ── */
+  const BUG_COLS_XLSX = ['Bug-ID', 'Title', 'Severity', 'Priority', 'Type', 'Status',
+    'Steps to Reproduce', 'Expected Result', 'Actual Result', 'Reporter', 'Assignee', 'Linked TC', 'Created At']
+  const colWidths: Record<string, number> = {
+    'Bug-ID': 10, 'Title': 30, 'Severity': 10, 'Priority': 10, 'Type': 14, 'Status': 12,
+    'Steps to Reproduce': 32, 'Expected Result': 28, 'Actual Result': 28,
+    'Reporter': 16, 'Assignee': 16, 'Linked TC': 12, 'Created At': 14,
+  }
+  const bs = wb.addWorksheet('Bugs')
+  bs.columns = BUG_COLS_XLSX.map((h) => ({ header: h, key: h, width: colWidths[h] ?? 16 }))
+
+  const hdr = bs.getRow(1)
+  hdr.height = 20
+  hdr.eachCell((cell) => {
+    cell.fill = fill(C.navy)
+    cell.font = { bold: true, color: { argb: C.white }, size: 10 }
+    cell.alignment = { horizontal: 'center', vertical: 'middle' }
+    cell.border = { bottom: { style: 'medium', color: { argb: 'FF0F172A' } } }
+  })
+
+  for (const b of bugs) {
+    const row = bs.addRow({
+      'Bug-ID': b.bugId,
+      'Title': b.title,
+      'Severity': b.severity,
+      'Priority': b.priority,
+      'Type': b.type,
+      'Status': b.status,
+      'Steps to Reproduce': bugStepsToText(b.steps),
+      'Expected Result': b.expectedResult,
+      'Actual Result': b.actualResult,
+      'Reporter': b.reporter?.name ?? '',
+      'Assignee': b.assignee?.name ?? '',
+      'Linked TC': b.testCase?.tcId ?? '',
+      'Created At': b.createdAt ? new Date(b.createdAt).toLocaleDateString() : '',
+    })
+    row.eachCell({ includeEmpty: true }, (cell, colNum) => {
+      const header = BUG_COLS_XLSX[colNum - 1]
+      const isSteps = header === 'Steps to Reproduce' || header === 'Expected Result' || header === 'Actual Result'
+      cell.alignment = { vertical: 'top', wrapText: isSteps }
+      cell.font = { color: { argb: C.grayText }, size: 9 }
+      cell.border = { bottom: { style: 'thin', color: { argb: 'FFCBD5E1' } }, right: { style: 'thin', color: { argb: 'FFCBD5E1' } } }
+    })
+  }
+
+  const buf = await wb.xlsx.writeBuffer()
+  const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url; a.download = filename; a.click()
+  URL.revokeObjectURL(url)
 }
 
 const RUN_EXPORT_COLS = [
@@ -844,7 +904,7 @@ export default function ExportPage() {
       const filename = `bugs_${slug}`
 
       if (bgFormat === 'xlsx') {
-        exportBugXlsx(bugs, pName, `${filename}.xlsx`)
+        await exportBugXlsx(bugs, pName, `${filename}.xlsx`)
       } else {
         exportBugPdf(bugs, pName, filename)
       }
