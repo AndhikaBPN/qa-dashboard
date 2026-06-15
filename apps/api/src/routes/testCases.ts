@@ -5,6 +5,7 @@ import {
   TestCaseCreateSchema, TestCaseUpdateSchema, TestCaseQuerySchema,
   BulkActionSchema, ExportQuerySchema,
 } from '../types/schemas.js'
+import * as XLSX from 'xlsx'
 
 async function generateTcId(): Promise<string> {
   const last = await prisma.testCase.findFirst({ orderBy: { tcId: 'desc' } })
@@ -143,48 +144,97 @@ export const testCaseRoutes: FastifyPluginAsync = async (fastify) => {
     }
   })
 
+  fastify.get('/import/jobs', auth, async (request, reply) => {
+    const { projectId } = request.query as { projectId?: string }
+    const jobs = await prisma.importJob.findMany({
+      where: projectId ? { projectId } : {},
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    })
+    return ok(reply, jobs)
+  })
+
   fastify.post('/import', auth, async (request, reply) => {
-    const data = await request.file()
-    if (!data) return badRequest(reply, 'No file uploaded')
+    const parts = request.parts()
+    let fileBuffer: Buffer | null = null
+    let fileName = 'unknown.xlsx'
+    let suiteId: string | undefined
+    let projectId: string | undefined
 
-    const buffer = await data.toBuffer()
-    const text = buffer.toString('utf-8')
-    const lines = text.split('\n').filter(Boolean)
-    const headers = lines[0].split(',').map((h) => h.trim().replace(/"/g, ''))
+    for await (const part of parts) {
+      if (part.type === 'file') {
+        fileBuffer = await part.toBuffer()
+        fileName = part.filename
+      } else {
+        if (part.fieldname === 'suiteId' && part.value) suiteId = String(part.value)
+        if (part.fieldname === 'projectId' && part.value) projectId = String(part.value)
+      }
+    }
 
-    const imported: string[] = []
+    if (!fileBuffer) return badRequest(reply, 'No file uploaded')
+
+    const wb = XLSX.read(fileBuffer, { type: 'buffer' })
+    const ws = wb.Sheets[wb.SheetNames[0]]
+    const rows = XLSX.utils.sheet_to_json<Record<string, string>>(ws, { defval: '' })
+
+    const importedIds: string[] = []
     const errors: string[] = []
 
-    for (let i = 1; i < lines.length; i++) {
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i]
       try {
-        const vals = lines[i].split(',').map((v) => v.trim().replace(/^"|"$/g, ''))
-        const row: Record<string, string> = {}
-        headers.forEach((h, idx) => { row[h] = vals[idx] ?? '' })
+        let steps: unknown
+        const stepsRaw = row['Steps'] ?? ''
+        try {
+          steps = JSON.parse(stepsRaw)
+        } catch {
+          steps = stepsRaw
+            ? [{ order: 1, action: stepsRaw, testData: '', expectedStepResult: '' }]
+            : [{ order: 1, action: '-', testData: '', expectedStepResult: '' }]
+        }
 
         const parsed = TestCaseCreateSchema.safeParse({
           title: row['Title'],
           precondition: row['Precondition'] || undefined,
-          steps: JSON.parse(row['Steps'] || '[]'),
-          expectedResult: row['Expected Result'],
-          priority: row['Priority'],
-          type: row['Type'],
-          scenarioType: row['Scenario Type'],
-          jiraIssueKey: row['Jira Issue'] || undefined,
+          steps,
+          expectedResult: row['Expected Result'] || row['ExpectedResult'] || '-',
+          priority: row['Priority'] || 'MEDIUM',
+          type: row['Type'] || 'FUNCTIONAL',
+          scenarioType: row['Scenario Type'] || row['ScenarioType'] || 'POSITIVE',
+          jiraIssueKey: row['Jira Issue Key'] || row['Jira Issue'] || undefined,
+          suiteId: suiteId || undefined,
+          projectId: projectId || undefined,
         })
 
-        if (!parsed.success) { errors.push(`Row ${i}: ${parsed.error.message}`); continue }
+        if (!parsed.success) {
+          errors.push(`Row ${i + 2}: ${parsed.error.errors[0]?.message ?? parsed.error.message}`)
+          continue
+        }
 
         const tcId = await generateTcId()
         const tc = await prisma.testCase.create({
           data: { ...parsed.data, tcId, steps: parsed.data.steps as any, authorId: request.user.sub },
         })
-        imported.push(tc.tcId)
+        importedIds.push(tc.tcId)
       } catch (e) {
-        errors.push(`Row ${i}: ${String(e)}`)
+        errors.push(`Row ${i + 2}: ${String(e)}`)
       }
     }
 
-    return ok(reply, { imported: imported.length, errors })
+    const job = await prisma.importJob.create({
+      data: {
+        fileName,
+        projectId: projectId ?? null,
+        suiteId: suiteId ?? null,
+        status: 'COMPLETED',
+        testsCount: importedIds.length,
+        errorCount: errors.length,
+        errors: errors as any,
+        createdById: request.user.sub,
+      },
+    })
+
+    return ok(reply, { jobId: job.id, imported: importedIds.length, errorCount: errors.length, errors })
   })
 
   fastify.get('/:id', auth, async (request, reply) => {

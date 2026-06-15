@@ -68,6 +68,12 @@ enum BugStatus {
   CLOSED
 }
 
+enum ImportStatus {
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
 enum BugType {
   FUNCTIONAL
   UI
@@ -172,6 +178,19 @@ model Execution {
   executedAt   DateTime        @default(now())
 
   @@unique([testCaseId, testRunId])
+}
+
+model ImportJob {
+  id          String       @id @default(cuid())
+  fileName    String
+  projectId   String?
+  suiteId     String?
+  status      ImportStatus @default(COMPLETED)
+  testsCount  Int          @default(0)
+  errorCount  Int          @default(0)
+  errors      Json         @default("[]")
+  createdById String
+  createdAt   DateTime     @default(now())
 }
 
 model Bug {
