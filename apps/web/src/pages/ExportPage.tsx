@@ -723,16 +723,32 @@ export default function ExportPage() {
     return projects.find((p) => p.id === pid)?.name ?? pid
   }
 
+  async function fetchAll<T>(endpoint: string, baseParams: URLSearchParams, pageLimit = 500): Promise<T[]> {
+    const results: T[] = []
+    let page = 1
+    while (true) {
+      const p = new URLSearchParams(baseParams)
+      p.set('page', String(page))
+      p.set('limit', String(pageLimit))
+      const res = await api.get(`${endpoint}?${p}`)
+      const data: T[] = res.data.data ?? []
+      results.push(...data)
+      const meta = res.data.meta as { totalPages?: number } | undefined
+      if (data.length === 0 || !meta?.totalPages || page >= meta.totalPages) break
+      page++
+    }
+    return results
+  }
+
   /* ── Test Case export ──────────────────────────────────────────── */
 
   async function doExportTc() {
     setTcLoading(true)
     try {
-      const params = new URLSearchParams({ limit: '9999' })
+      const params = new URLSearchParams()
       if (tcProject) params.set('projectId', tcProject)
 
-      const res = await api.get(`/test-cases?${params}`)
-      let tcs: TC[] = res.data.data ?? []
+      let tcs: TC[] = await fetchAll<TC>('/test-cases', params, 500)
 
       if (tcSuites.size > 0) {
         tcs = tcs.filter((tc) => tc.suite && tcSuites.has(tc.suite.id))
@@ -793,11 +809,10 @@ export default function ExportPage() {
   async function doExportBugs() {
     setBugLoading(true)
     try {
-      const params = new URLSearchParams({ limit: '9999' })
+      const params = new URLSearchParams()
       if (bgProject) params.set('projectId', bgProject)
 
-      const res = await api.get(`/bugs?${params}`)
-      let bugs: BugItem[] = res.data.data ?? []
+      let bugs: BugItem[] = await fetchAll<BugItem>('/bugs', params, 500)
 
       if (bgSuites.size > 0) {
         bugs = bugs.filter((b) => b.testCase?.suiteId && bgSuites.has(b.testCase.suiteId))
