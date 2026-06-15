@@ -7,6 +7,40 @@ import {
 } from '../types/schemas.js'
 import * as XLSX from 'xlsx'
 
+function parseStepsFromCell(stepsRaw: string, testDataRaw: string) {
+  // 1. JSON array (backwards compat)
+  try {
+    const p = JSON.parse(stepsRaw)
+    if (Array.isArray(p)) return p
+  } catch { /* not JSON */ }
+
+  if (!stepsRaw.trim()) return [{ order: 1, action: '-', testData: '', expectedStepResult: '' }]
+
+  // 2. Numbered lines: "1. action text"
+  const lines = stepsRaw.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
+  const numbered = lines
+    .map((l) => l.match(/^(\d+)\.\s*(.+)/))
+    .filter(Boolean) as RegExpMatchArray[]
+
+  if (numbered.length > 0) {
+    // Parse matching test-data lines by number
+    const dataByNum = new Map<number, string>()
+    for (const dl of testDataRaw.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)) {
+      const m = dl.match(/^(\d+)\.\s*(.+)/)
+      if (m) dataByNum.set(parseInt(m[1], 10), m[2].trim())
+    }
+    return numbered.map((m, i) => ({
+      order: i + 1,
+      action: m[2].trim(),
+      testData: dataByNum.get(parseInt(m[1], 10)) ?? '',
+      expectedStepResult: '',
+    }))
+  }
+
+  // 3. Whole cell = single step
+  return [{ order: 1, action: stepsRaw.trim(), testData: testDataRaw.trim(), expectedStepResult: '' }]
+}
+
 async function generateTcId(): Promise<string> {
   const last = await prisma.testCase.findFirst({ orderBy: { tcId: 'desc' } })
   if (!last) return 'TC-001'
@@ -183,16 +217,9 @@ export const testCaseRoutes: FastifyPluginAsync = async (fastify) => {
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i]
       try {
-        let steps: unknown
         const stepsRaw = row['Steps'] ?? ''
         const testDataRaw = row['Test Data'] ?? row['TestData'] ?? ''
-        try {
-          steps = JSON.parse(stepsRaw)
-        } catch {
-          steps = stepsRaw
-            ? [{ order: 1, action: stepsRaw, testData: testDataRaw, expectedStepResult: '' }]
-            : [{ order: 1, action: '-', testData: '', expectedStepResult: '' }]
-        }
+        const steps = parseStepsFromCell(stepsRaw, testDataRaw)
 
         const parsed = TestCaseCreateSchema.safeParse({
           title: row['Title'],
