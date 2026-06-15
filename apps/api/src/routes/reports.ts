@@ -291,6 +291,51 @@ export const reportRoutes: FastifyPluginAsync = async (fastify) => {
     return ok(reply, points)
   })
 
+  fastify.get('/bugs-by-suite', auth, async (request, reply) => {
+    const { projectId } = request.query as { projectId?: string }
+
+    const bugs = await prisma.bug.findMany({
+      where: projectId ? { projectId } : {},
+      select: {
+        status: true,
+        severity: true,
+        testCase: {
+          select: {
+            suiteId: true,
+            suite: { select: { id: true, name: true } },
+          },
+        },
+      },
+    })
+
+    // Total status breakdown
+    const totals = { OPEN: 0, IN_PROGRESS: 0, RESOLVED: 0, CLOSED: 0, total: 0 }
+    const suiteMap = new Map<string, {
+      suiteId: string; suiteName: string
+      OPEN: number; IN_PROGRESS: number; RESOLVED: number; CLOSED: number; total: number
+    }>()
+
+    for (const bug of bugs) {
+      totals.total++
+      totals[bug.status as keyof typeof totals] = (totals[bug.status as keyof typeof totals] as number) + 1
+
+      const suiteId = bug.testCase?.suiteId ?? '__none__'
+      const suiteName = bug.testCase?.suite?.name ?? '(No Suite)'
+
+      if (!suiteMap.has(suiteId)) {
+        suiteMap.set(suiteId, { suiteId, suiteName, OPEN: 0, IN_PROGRESS: 0, RESOLVED: 0, CLOSED: 0, total: 0 })
+      }
+      const entry = suiteMap.get(suiteId)!
+      entry.total++;
+      (entry[bug.status as keyof typeof entry] as number)++
+    }
+
+    return ok(reply, {
+      totals,
+      bySuite: Array.from(suiteMap.values()).sort((a, b) => b.total - a.total),
+    })
+  })
+
   fastify.get('/bug-summary', auth, async (_request, reply) => {
     const projects = await prisma.project.findMany({
       orderBy: { createdAt: 'desc' },
