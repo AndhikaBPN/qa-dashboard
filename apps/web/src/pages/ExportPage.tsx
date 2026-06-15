@@ -59,6 +59,20 @@ function stepsToText(steps: unknown) {
   return parseSteps(steps).map((s, i) => `${i + 1}. ${s.action}`).join('\n')
 }
 
+function bugStepsToText(steps: unknown): string {
+  if (Array.isArray(steps)) {
+    return (steps as string[]).map((s, i) => `${i + 1}. ${s}`).join('\n')
+  }
+  if (typeof steps === 'string') {
+    try {
+      const parsed = JSON.parse(steps)
+      if (Array.isArray(parsed)) return (parsed as string[]).map((s, i) => `${i + 1}. ${s}`).join('\n')
+    } catch { /* fall through */ }
+    return steps
+  }
+  return ''
+}
+
 function testDataToText(steps: unknown) {
   return parseSteps(steps)
     .map((s, i) => (s.testData ? `${i + 1}. ${s.testData}` : ''))
@@ -181,7 +195,7 @@ function exportBugXlsx(bugs: BugItem[], projectName: string, filename: string) {
     'Priority': b.priority,
     'Type': b.type,
     'Status': b.status,
-    'Steps to Reproduce': stepsToText(b.steps),
+    'Steps to Reproduce': bugStepsToText(b.steps),
     'Expected Result': b.expectedResult,
     'Actual Result': b.actualResult,
     'Reporter': b.reporter?.name ?? '',
@@ -482,7 +496,7 @@ function exportBugPdf(bugs: BugItem[], projectName: string, filename: string) {
     const row: Record<string, string> = {
       'Bug-ID': b.bugId, 'Title': b.title, 'Severity': b.severity,
       'Priority': b.priority, 'Type': b.type, 'Status': b.status,
-      'Steps to Reproduce': stepsToText(b.steps), 'Expected Result': b.expectedResult,
+      'Steps to Reproduce': bugStepsToText(b.steps), 'Expected Result': b.expectedResult,
       'Actual Result': b.actualResult, 'Reporter': b.reporter?.name ?? '',
       'Assignee': b.assignee?.name ?? '', 'Linked TC': b.testCase?.tcId ?? '',
     }
