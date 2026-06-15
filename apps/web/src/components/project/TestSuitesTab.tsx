@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import {
   Plus, Trash2, X, Search, CheckCircle2, XCircle, MinusCircle, AlertTriangle, Circle,
-  Bug, ChevronRight, ChevronDown, Folder, FolderOpen, Pencil,
+  Bug, ChevronRight, ChevronDown, Folder, FolderOpen, Pencil, Save,
 } from 'lucide-react'
 import BugFormModal from '@/components/bug/BugFormModal'
 
@@ -422,6 +422,159 @@ function CreateRunModal({
   )
 }
 
+// ─── Expanded Row ────────────────────────────────────────────────────────────
+
+interface Step {
+  order: number
+  action: string
+  testData: string
+  expectedStepResult: string
+}
+
+interface FullTestCase {
+  id: string
+  tcId: string
+  title: string
+  priority: string
+  type: string
+  scenarioType: string
+  precondition: string | null
+  steps: Step[]
+  expectedResult: string
+}
+
+function ExpandedRow({
+  exec, colSpan, onClose,
+}: {
+  exec: Execution
+  colSpan: number
+  onClose: () => void
+}) {
+  const qc = useQueryClient()
+  const [actualResult, setActualResult] = useState(exec.actualResult ?? '')
+  const [saved, setSaved] = useState(false)
+
+  const { data: tc, isLoading } = useQuery<FullTestCase>({
+    queryKey: ['test-case', exec.testCase.id],
+    queryFn: () => api.get(`/test-cases/${exec.testCase.id}`).then((r) => r.data.data),
+  })
+
+  const saveActualMut = useMutation({
+    mutationFn: () => api.put(`/executions/${exec.id}`, { status: exec.status, actualResult }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['test-run'] })
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2000)
+    },
+  })
+
+  const steps: Step[] = Array.isArray(tc?.steps) ? tc.steps : []
+
+  return (
+    <tr>
+      <td colSpan={colSpan} className="px-0 py-0">
+        <div className="border-t border-b bg-muted/10 px-6 py-4 space-y-4">
+          {isLoading ? (
+            <div className="text-xs text-muted-foreground">Loading details…</div>
+          ) : (
+            <>
+              {/* Precondition */}
+              {tc?.precondition && (
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
+                    Pre-conditions
+                  </p>
+                  <p className="text-sm text-foreground/80 bg-background border rounded-md px-3 py-2">
+                    {tc.precondition}
+                  </p>
+                </div>
+              )}
+
+              {/* Steps table */}
+              {steps.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
+                    Execution Steps
+                  </p>
+                  <div className="border rounded-md overflow-hidden">
+                    <table className="w-full text-sm">
+                      <thead className="bg-muted/40">
+                        <tr>
+                          <th className="text-left px-3 py-2 text-xs font-medium text-muted-foreground w-8">#</th>
+                          <th className="text-left px-3 py-2 text-xs font-medium text-muted-foreground">Step</th>
+                          <th className="text-left px-3 py-2 text-xs font-medium text-muted-foreground w-40">Data</th>
+                          <th className="text-left px-3 py-2 text-xs font-medium text-muted-foreground w-56">Expected Result</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {steps.map((step, i) => (
+                          <tr key={i} className="border-t">
+                            <td className="px-3 py-2.5 text-xs text-muted-foreground align-top">{step.order}</td>
+                            <td className="px-3 py-2.5 text-sm align-top whitespace-pre-wrap">{step.action}</td>
+                            <td className="px-3 py-2.5 text-sm text-muted-foreground align-top whitespace-pre-wrap">
+                              {step.testData || <span className="italic text-xs">—</span>}
+                            </td>
+                            <td className="px-3 py-2.5 text-sm text-muted-foreground align-top whitespace-pre-wrap">
+                              {step.expectedStepResult || <span className="italic text-xs">—</span>}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Overall expected result */}
+              {tc?.expectedResult && (
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
+                    Expected Result
+                  </p>
+                  <p className="text-sm text-foreground/80 bg-background border rounded-md px-3 py-2">
+                    {tc.expectedResult}
+                  </p>
+                </div>
+              )}
+
+              {/* Actual Result */}
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
+                  Actual Result
+                </p>
+                <div className="flex gap-2 items-start">
+                  <textarea
+                    value={actualResult}
+                    onChange={(e) => setActualResult(e.target.value)}
+                    rows={2}
+                    placeholder="Enter actual result…"
+                    className="flex-1 border rounded-md px-3 py-2 text-sm bg-background focus:outline-none focus:ring-1 focus:ring-primary resize-none"
+                  />
+                  <button
+                    onClick={() => saveActualMut.mutate()}
+                    disabled={saveActualMut.isPending}
+                    className={`flex items-center gap-1.5 px-3 py-2 text-xs rounded-md border transition-colors shrink-0 ${
+                      saved
+                        ? 'border-green-600 text-green-400 bg-green-900/20'
+                        : 'hover:bg-muted'
+                    }`}
+                  >
+                    <Save className="h-3.5 w-3.5" />
+                    {saved ? 'Saved' : 'Save'}
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+          <button onClick={onClose} className="text-xs text-muted-foreground hover:text-foreground underline">
+            Collapse
+          </button>
+        </div>
+      </td>
+    </tr>
+  )
+}
+
 // ─── Suite Detail Panel ───────────────────────────────────────────────────────
 
 function SuiteDetailPanel({
@@ -444,6 +597,8 @@ function SuiteDetailPanel({
     queryFn: () => api.get(`/test-runs/${runId}/progress`).then((r) => r.data.data),
     refetchInterval: 5000,
   })
+
+  const [expandedExecId, setExpandedExecId] = useState<string | null>(null)
 
   const updateStatusMut = useMutation({
     mutationFn: ({ execId, status }: { execId: string; status: string }) =>
@@ -508,47 +663,72 @@ function SuiteDetailPanel({
             <table className="w-full text-sm">
               <thead className="bg-muted/40 sticky top-0">
                 <tr>
-                  {['ID', 'Title', 'Priority', 'Status', ''].map((h) => (
-                    <th key={h} className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">{h}</th>
+                  {['', 'ID', 'Title', 'Priority', 'Status', ''].map((h, i) => (
+                    <th key={i} className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {executions.map((exec) => (
-                  <tr key={exec.id} className="border-t hover:bg-muted/20 group">
-                    <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground">{exec.testCase.tcId}</td>
-                    <td className="px-4 py-2.5 max-w-xs">
-                      <span className="line-clamp-1">{exec.testCase.title}</span>
-                    </td>
-                    <td className="px-4 py-2.5 text-xs">{exec.testCase.priority}</td>
-                    <td className="px-4 py-2.5">
-                      <div className="flex items-center gap-1">
-                        {STATUS_ICONS[exec.status]}
-                        <select
-                          value={exec.status}
-                          onChange={(e) => updateStatusMut.mutate({ execId: exec.id, status: e.target.value })}
-                          className={`text-xs px-1.5 py-0.5 rounded-full border-0 font-medium focus:outline-none cursor-pointer ${STATUS_COLORS[exec.status]}`}
-                        >
-                          {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
-                        </select>
-                      </div>
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <button
-                        onClick={() => onReportBug(exec.testCase.id)}
-                        title="Report Bug for this TC"
-                        className={`flex items-center gap-1 px-2 py-1 text-xs rounded-md border transition-colors opacity-0 group-hover:opacity-100 ${
-                          exec.status === 'FAIL' || exec.status === 'BLOCKED'
-                            ? 'border-red-700 text-red-400 hover:bg-red-900/30 !opacity-100'
-                            : 'border-muted text-muted-foreground hover:bg-muted/40'
+                {executions.map((exec) => {
+                  const isExpanded = expandedExecId === exec.id
+                  return (
+                    <>
+                      <tr
+                        key={exec.id}
+                        className={`border-t group cursor-pointer transition-colors ${
+                          isExpanded ? 'bg-muted/30' : 'hover:bg-muted/20'
                         }`}
+                        onClick={() => setExpandedExecId(isExpanded ? null : exec.id)}
                       >
-                        <Bug className="h-3 w-3" />
-                        <span>Bug</span>
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                        <td className="px-3 py-2.5 w-6">
+                          {isExpanded
+                            ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+                            : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100" />
+                          }
+                        </td>
+                        <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground">{exec.testCase.tcId}</td>
+                        <td className="px-4 py-2.5 max-w-xs">
+                          <span className="line-clamp-1">{exec.testCase.title}</span>
+                        </td>
+                        <td className="px-4 py-2.5 text-xs">{exec.testCase.priority}</td>
+                        <td className="px-4 py-2.5" onClick={(e) => e.stopPropagation()}>
+                          <div className="flex items-center gap-1">
+                            {STATUS_ICONS[exec.status]}
+                            <select
+                              value={exec.status}
+                              onChange={(e) => updateStatusMut.mutate({ execId: exec.id, status: e.target.value })}
+                              className={`text-xs px-1.5 py-0.5 rounded-full border-0 font-medium focus:outline-none cursor-pointer ${STATUS_COLORS[exec.status]}`}
+                            >
+                              {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+                            </select>
+                          </div>
+                        </td>
+                        <td className="px-4 py-2.5" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            onClick={() => onReportBug(exec.testCase.id)}
+                            title="Report Bug for this TC"
+                            className={`flex items-center gap-1 px-2 py-1 text-xs rounded-md border transition-colors opacity-0 group-hover:opacity-100 ${
+                              exec.status === 'FAIL' || exec.status === 'BLOCKED'
+                                ? 'border-red-700 text-red-400 hover:bg-red-900/30 !opacity-100'
+                                : 'border-muted text-muted-foreground hover:bg-muted/40'
+                            }`}
+                          >
+                            <Bug className="h-3 w-3" />
+                            <span>Bug</span>
+                          </button>
+                        </td>
+                      </tr>
+                      {isExpanded && (
+                        <ExpandedRow
+                          key={`expanded-${exec.id}`}
+                          exec={exec}
+                          colSpan={6}
+                          onClose={() => setExpandedExecId(null)}
+                        />
+                      )}
+                    </>
+                  )
+                })}
               </tbody>
             </table>
           )}
