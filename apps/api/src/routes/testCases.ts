@@ -266,7 +266,7 @@ export const testCaseRoutes: FastifyPluginAsync = async (fastify) => {
 
     const testCase = await prisma.testCase.update({
       where: { id },
-      data: { ...body.data, steps: body.data.steps as any },
+      data: { ...body.data, steps: body.data.steps as any, updatedById: request.user.sub },
       include: {
         author: { select: { id: true, name: true } },
         suite: { select: { id: true, name: true } },

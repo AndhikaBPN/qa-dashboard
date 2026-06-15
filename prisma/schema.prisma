@@ -105,6 +105,7 @@ model User {
   role            Role        @default(QA)
   createdAt       DateTime    @default(now())
   testCases       TestCase[]  @relation("Author")
+  updatedTestCases TestCase[] @relation("Updater")
   testRuns        TestRun[]   @relation("Creator")
   executions      Execution[]
   reportedBugs    Bug[]       @relation("Reporter")
@@ -143,6 +144,8 @@ model TestCase {
   project        Project?     @relation(fields: [projectId], references: [id])
   authorId       String
   author         User         @relation("Author", fields: [authorId], references: [id])
+  updatedById    String?
+  updatedBy      User?        @relation("Updater", fields: [updatedById], references: [id])
   jiraIssueKey   String?
   executions     Execution[]
   bugs           Bug[]

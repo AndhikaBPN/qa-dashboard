@@ -426,6 +426,129 @@ export const reportRoutes: FastifyPluginAsync = async (fastify) => {
     return ok(reply, stats)
   })
 
+  fastify.get('/user-activity', auth, async (request, reply) => {
+    const { projectId, from, to, weeks: weeksParam } = request.query as {
+      projectId?: string; from?: string; to?: string; weeks?: string
+    }
+
+    const numWeeks = weeksParam ? Math.min(parseInt(weeksParam, 10), 12) : 4
+    const now = new Date()
+
+    let rangeEnd: Date
+    let rangeStart: Date
+
+    if (from && to) {
+      rangeStart = new Date(from); rangeStart.setHours(0, 0, 0, 0)
+      rangeEnd = new Date(to + 'T23:59:59.999Z')
+    } else {
+      rangeEnd = new Date(now); rangeEnd.setHours(23, 59, 59, 999)
+      rangeStart = new Date(rangeEnd)
+      rangeStart.setDate(rangeStart.getDate() - (numWeeks * 7 - 1))
+      rangeStart.setHours(0, 0, 0, 0)
+    }
+
+    // Build weekly buckets starting from Monday-aligned weeks
+    const buckets: { label: string; from: Date; to: Date }[] = []
+    const cursor = new Date(rangeStart)
+    while (cursor <= rangeEnd) {
+      const weekStart = new Date(cursor)
+      const weekEnd = new Date(cursor)
+      weekEnd.setDate(weekEnd.getDate() + 6)
+      weekEnd.setHours(23, 59, 59, 999)
+      if (weekEnd > rangeEnd) weekEnd.setTime(rangeEnd.getTime())
+      buckets.push({
+        label: weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+        from: new Date(weekStart),
+        to: new Date(weekEnd),
+      })
+      cursor.setDate(cursor.getDate() + 7)
+    }
+
+    const pf = projectId ? { projectId } : {}
+
+    const [tcCreated, tcUpdated, executions, bugs, users] = await prisma.$transaction([
+      prisma.testCase.findMany({
+        where: { ...pf, createdAt: { gte: rangeStart, lte: rangeEnd } },
+        select: { authorId: true, createdAt: true },
+      }),
+      prisma.testCase.findMany({
+        where: { ...pf, updatedById: { not: null }, updatedAt: { gte: rangeStart, lte: rangeEnd } },
+        select: { updatedById: true, updatedAt: true },
+      }),
+      prisma.execution.findMany({
+        where: {
+          ...(projectId ? { testCase: { projectId } } : {}),
+          executedAt: { gte: rangeStart, lte: rangeEnd },
+          status: { not: 'NOT_RUN' },
+        },
+        select: { executorId: true, executedAt: true },
+      }),
+      prisma.bug.findMany({
+        where: { ...pf, createdAt: { gte: rangeStart, lte: rangeEnd } },
+        select: { reporterId: true, createdAt: true },
+      }),
+      prisma.user.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } }),
+    ])
+
+    function bucketIndex(date: Date): number {
+      for (let i = 0; i < buckets.length; i++) {
+        if (date >= buckets[i].from && date <= buckets[i].to) return i
+      }
+      return -1
+    }
+
+    type Week = { created: number; updated: number; executed: number; defects: number }
+    const userMap = new Map<string, { name: string; weeks: Week[] }>()
+    for (const u of users) {
+      userMap.set(u.id, { name: u.name, weeks: buckets.map(() => ({ created: 0, updated: 0, executed: 0, defects: 0 })) })
+    }
+
+    for (const tc of tcCreated) {
+      const i = bucketIndex(tc.createdAt)
+      if (i >= 0) userMap.get(tc.authorId)?.weeks[i] && (userMap.get(tc.authorId)!.weeks[i].created++)
+    }
+    for (const tc of tcUpdated) {
+      if (!tc.updatedById) continue
+      const i = bucketIndex(tc.updatedAt)
+      if (i >= 0) userMap.get(tc.updatedById)?.weeks[i] && (userMap.get(tc.updatedById)!.weeks[i].updated++)
+    }
+    for (const exec of executions) {
+      const i = bucketIndex(exec.executedAt)
+      if (i >= 0) userMap.get(exec.executorId)?.weeks[i] && (userMap.get(exec.executorId)!.weeks[i].executed++)
+    }
+    for (const bug of bugs) {
+      const i = bucketIndex(bug.createdAt)
+      if (i >= 0) userMap.get(bug.reporterId)?.weeks[i] && (userMap.get(bug.reporterId)!.weeks[i].defects++)
+    }
+
+    const result = Array.from(userMap.entries()).map(([userId, u]) => {
+      const totals = u.weeks.reduce(
+        (acc, w) => ({ created: acc.created + w.created, updated: acc.updated + w.updated, executed: acc.executed + w.executed, defects: acc.defects + w.defects }),
+        { created: 0, updated: 0, executed: 0, defects: 0 }
+      )
+      return { userId, userName: u.name, weeks: u.weeks, totals }
+    })
+
+    const weekTotals = buckets.map((_, i) =>
+      result.reduce(
+        (acc, u) => ({ created: acc.created + u.weeks[i].created, updated: acc.updated + u.weeks[i].updated, executed: acc.executed + u.weeks[i].executed, defects: acc.defects + u.weeks[i].defects }),
+        { created: 0, updated: 0, executed: 0, defects: 0 }
+      )
+    )
+
+    const overallTotals = weekTotals.reduce(
+      (acc, w) => ({ created: acc.created + w.created, updated: acc.updated + w.updated, executed: acc.executed + w.executed, defects: acc.defects + w.defects }),
+      { created: 0, updated: 0, executed: 0, defects: 0 }
+    )
+
+    return ok(reply, {
+      weeks: buckets.map((b) => ({ label: b.label, from: b.from.toISOString(), to: b.to.toISOString() })),
+      users: result,
+      weekTotals,
+      overallTotals,
+    })
+  })
+
   fastify.get('/coverage', auth, async (request, reply) => {
     const { suiteId } = request.query as { suiteId?: string }
 

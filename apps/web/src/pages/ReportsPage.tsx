@@ -4,7 +4,7 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid,
 } from 'recharts'
 import { api } from '@/lib/api'
-import { CheckCircle2, Bug, FlaskConical, TrendingUp, AlertCircle, Circle, Loader2 } from 'lucide-react'
+import { CheckCircle2, Bug, FlaskConical, TrendingUp, AlertCircle, Circle, Loader2, Users } from 'lucide-react'
 
 type Period = 'week' | 'month' | 'year'
 
@@ -15,6 +15,19 @@ type BugsBySuiteRow = {
 type BugsBySuiteData = {
   totals: { OPEN: number; IN_PROGRESS: number; RESOLVED: number; CLOSED: number; total: number }
   bySuite: BugsBySuiteRow[]
+}
+
+type ActivityWeek = { created: number; updated: number; executed: number; defects: number }
+type ActivityUser = {
+  userId: string; userName: string
+  weeks: ActivityWeek[]
+  totals: ActivityWeek
+}
+type UserActivityData = {
+  weeks: { label: string; from: string; to: string }[]
+  users: ActivityUser[]
+  weekTotals: ActivityWeek[]
+  overallTotals: ActivityWeek
 }
 
 function buildParams(period: Period, projectId: string, from: string, to: string) {
@@ -91,6 +104,22 @@ export default function ReportsPage() {
       if (projectFilter) p.set('projectId', projectFilter)
       return api.get(`/reports/bugs-by-suite?${p}`).then((r) => r.data.data as BugsBySuiteData)
     },
+  })
+
+  const [activityWeeks, setActivityWeeks] = useState(4)
+  const [showNonEmpty, setShowNonEmpty] = useState(true)
+
+  const activityQs = (() => {
+    const p: Record<string, string> = { weeks: String(activityWeeks) }
+    if (projectFilter) p.projectId = projectFilter
+    if (customActive && from) p.from = from
+    if (customActive && to) p.to = to
+    return new URLSearchParams(p).toString()
+  })()
+
+  const { data: activityData, isLoading: activityLoading } = useQuery({
+    queryKey: ['report-user-activity', activityQs],
+    queryFn: () => api.get(`/reports/user-activity?${activityQs}`).then((r) => r.data.data as UserActivityData),
   })
 
   const s = summaryData
@@ -331,6 +360,171 @@ export default function ReportsPage() {
             )}
           </div>
         ) : null}
+      </div>
+
+      {/* ── User Activity ───────────────────────────────────────────── */}
+      <div className="bg-card border rounded-lg overflow-hidden">
+        <div className="px-4 py-3 border-b flex items-center gap-2 flex-wrap">
+          <Users className="h-4 w-4 text-primary shrink-0" />
+          <h2 className="text-sm font-semibold">User Activity</h2>
+          <div className="ml-auto flex items-center gap-4 flex-wrap">
+            {/* Week count selector */}
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-muted-foreground">Show</span>
+              {[4, 8, 12].map((w) => (
+                <button
+                  key={w}
+                  onClick={() => setActivityWeeks(w)}
+                  className={`px-2 py-0.5 text-xs rounded transition-colors ${
+                    activityWeeks === w
+                      ? 'bg-primary text-primary-foreground'
+                      : 'bg-muted text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  {w}w
+                </button>
+              ))}
+            </div>
+            {/* Non-empty toggle */}
+            <label className="flex items-center gap-1.5 text-xs cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={showNonEmpty}
+                onChange={(e) => setShowNonEmpty(e.target.checked)}
+                className="h-3.5 w-3.5 accent-primary"
+              />
+              Show only non-empty items
+            </label>
+          </div>
+        </div>
+
+        {activityLoading ? (
+          <div className="p-6 flex justify-center">
+            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+          </div>
+        ) : activityData ? (() => {
+          const visibleUsers = showNonEmpty
+            ? activityData.users.filter((u) =>
+                u.totals.created + u.totals.updated + u.totals.executed + u.totals.defects > 0
+              )
+            : activityData.users
+
+          const SUBCOLS = [
+            { key: 'created' as const,  label: 'Case\ncreated'  },
+            { key: 'updated' as const,  label: 'Case\nupdated'  },
+            { key: 'executed' as const, label: 'Run\nexecuted'  },
+            { key: 'defects' as const,  label: 'Defects\ndiscovered' },
+          ]
+
+          return (
+            <div className="overflow-x-auto">
+              <table className="text-xs border-collapse min-w-max w-full">
+                <thead>
+                  {/* Week header row */}
+                  <tr className="border-b">
+                    <th className="sticky left-0 z-10 bg-card px-4 py-2 text-left font-medium text-muted-foreground w-44 min-w-[176px] border-r">
+                      User
+                    </th>
+                    {activityData.weeks.map((w) => (
+                      <th
+                        key={w.from}
+                        colSpan={SUBCOLS.length}
+                        className="px-2 py-2 text-center font-semibold border-r border-b-0 bg-muted/40"
+                      >
+                        {w.label}
+                      </th>
+                    ))}
+                    <th
+                      colSpan={SUBCOLS.length}
+                      className="px-2 py-2 text-center font-semibold bg-muted/60"
+                    >
+                      Total
+                    </th>
+                  </tr>
+                  {/* Sub-column header row */}
+                  <tr className="border-b bg-muted/20">
+                    <th className="sticky left-0 z-10 bg-muted/20 px-4 py-1.5 border-r" />
+                    {activityData.weeks.map((w) =>
+                      SUBCOLS.map((c) => (
+                        <th
+                          key={`${w.from}-${c.key}`}
+                          className="px-2 py-1.5 text-center font-medium text-muted-foreground whitespace-pre-line leading-tight border-r last-of-type:border-r-0"
+                          style={{ minWidth: 52 }}
+                        >
+                          {c.label}
+                        </th>
+                      ))
+                    )}
+                    {SUBCOLS.map((c) => (
+                      <th
+                        key={`total-${c.key}`}
+                        className="px-2 py-1.5 text-center font-medium text-muted-foreground whitespace-pre-line leading-tight"
+                        style={{ minWidth: 52 }}
+                      >
+                        {c.label}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleUsers.map((user) => (
+                    <tr key={user.userId} className="border-b hover:bg-muted/20 transition-colors">
+                      <td className="sticky left-0 z-10 bg-card hover:bg-muted/20 px-4 py-2 font-medium border-r truncate max-w-[176px]">
+                        {user.userName}
+                      </td>
+                      {user.weeks.map((w, wi) =>
+                        SUBCOLS.map((c) => (
+                          <td
+                            key={`${wi}-${c.key}`}
+                            className="px-2 py-2 text-center tabular-nums border-r"
+                          >
+                            {w[c.key] > 0
+                              ? <span className="text-cyan-400 font-medium">{w[c.key]}</span>
+                              : <span className="text-muted-foreground/40">0</span>}
+                          </td>
+                        ))
+                      )}
+                      {SUBCOLS.map((c) => (
+                        <td key={`total-${c.key}`} className="px-2 py-2 text-center tabular-nums font-semibold">
+                          {user.totals[c.key] > 0
+                            ? <span className="text-cyan-400">{user.totals[c.key]}</span>
+                            : <span className="text-muted-foreground/40">0</span>}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                  {visibleUsers.length === 0 && (
+                    <tr>
+                      <td colSpan={activityData.weeks.length * SUBCOLS.length + SUBCOLS.length + 1}
+                        className="py-8 text-center text-muted-foreground">
+                        No activity in this period
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t bg-muted/30 font-semibold">
+                    <td className="sticky left-0 z-10 bg-muted/30 px-4 py-2 border-r">Total</td>
+                    {activityData.weekTotals.map((wt, wi) =>
+                      SUBCOLS.map((c) => (
+                        <td key={`ft-${wi}-${c.key}`} className="px-2 py-2 text-center tabular-nums border-r">
+                          {wt[c.key] > 0 ? wt[c.key] : <span className="text-muted-foreground/40">0</span>}
+                        </td>
+                      ))
+                    )}
+                    {SUBCOLS.map((c) => (
+                      <td key={`ft-total-${c.key}`} className="px-2 py-2 text-center tabular-nums">
+                        {activityData.overallTotals[c.key] > 0
+                          ? activityData.overallTotals[c.key]
+                          : <span className="text-muted-foreground/40">0</span>}
+                      </td>
+                    ))}
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          )
+        })() : null}
       </div>
 
       {/* Per-project breakdown */}
