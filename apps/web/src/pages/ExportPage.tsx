@@ -219,7 +219,7 @@ function computeRunSummary(runs: { executions: RunExecution[] }[]) {
     for (const e of run.executions) {
       c.total++
       const s = e.status as keyof typeof c
-      if (s in c) (c[s] as number)++
+      if (s in c) { (c as Record<string, number>)[s] += 1 }
     }
   }
   return c
