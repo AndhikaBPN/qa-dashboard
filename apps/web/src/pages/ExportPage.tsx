@@ -4,7 +4,7 @@ import * as XLSX from 'xlsx'
 import { api } from '@/lib/api'
 import {
   Download, FlaskConical, FolderTree, Bug,
-  ChevronDown, ChevronRight, Loader2, FileText, FileSpreadsheet,
+  ChevronDown, ChevronRight, Loader2, FileText, FileSpreadsheet, Folder,
 } from 'lucide-react'
 
 /* ─── Types ──────────────────────────────────────────────────────── */
@@ -361,6 +361,67 @@ function SuiteNode({ suite, selected, onToggle }: { suite: Suite; selected: Set<
   )
 }
 
+/* Folder = expand/collapse only (no checkbox). Children = checkable test suites. */
+function SuiteFolderNode({
+  suite, selected, onToggle,
+}: { suite: Suite; selected: Set<string>; onToggle: (id: string) => void }) {
+  const [open, setOpen] = useState(false)
+  const hasChildren = !!suite.children?.length
+
+  return (
+    <div>
+      <button
+        className="w-full flex items-center gap-1.5 py-1 px-1 rounded text-xs hover:bg-muted/60 transition-colors"
+        onClick={() => setOpen((o) => !o)}
+      >
+        <span className="text-muted-foreground shrink-0">
+          {hasChildren
+            ? open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />
+            : <span className="w-3.5 h-3.5 inline-block" />}
+        </span>
+        <Folder className="h-3.5 w-3.5 shrink-0 text-amber-500" />
+        <span className="font-medium truncate">{suite.name}</span>
+        {hasChildren && !open && (
+          <span className="ml-auto text-[10px] text-muted-foreground shrink-0">
+            {suite.children!.length} suite{suite.children!.length !== 1 ? 's' : ''}
+          </span>
+        )}
+      </button>
+
+      {open && (
+        <div className="pl-6 border-l border-border/60 ml-3.5 mt-0.5 space-y-0.5">
+          {suite.children?.map((child) =>
+            child.children?.length ? (
+              /* nested folder inside folder → recurse */
+              <SuiteFolderNode key={child.id} suite={child} selected={selected} onToggle={onToggle} />
+            ) : (
+              /* leaf suite → checkbox */
+              <label
+                key={child.id}
+                className="flex items-center gap-1.5 text-xs cursor-pointer select-none py-0.5 px-1 rounded hover:bg-muted/40"
+              >
+                <input
+                  type="checkbox"
+                  checked={selected.has(child.id)}
+                  onChange={() => onToggle(child.id)}
+                  className="h-3 w-3 shrink-0"
+                />
+                <span className="truncate">{child.name}</span>
+                {child._count !== undefined && (
+                  <span className="text-muted-foreground ml-0.5 shrink-0">({child._count.testCases})</span>
+                )}
+              </label>
+            )
+          )}
+          {!suite.children?.length && (
+            <p className="text-[10px] text-muted-foreground px-1 py-0.5">No test suites</p>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function FormatToggle({ value, onChange }: { value: 'xlsx' | 'pdf'; onChange: (v: 'xlsx' | 'pdf') => void }) {
   return (
     <div className="flex rounded-md border overflow-hidden">
@@ -599,15 +660,15 @@ export default function ExportPage() {
         {flatStFolders.length > 0 && (
           <div>
             <p className="text-xs text-muted-foreground mb-2">
-              Filter by folder
-              {stSuites.size > 0 && <span className="ml-2 font-medium text-foreground">({stSuites.size} selected)</span>}
+              Expand folder to select test suites
+              {stSuites.size > 0 && <span className="ml-2 font-medium text-foreground">· {stSuites.size} suite{stSuites.size > 1 ? 's' : ''} selected</span>}
               {stSuites.size > 0 && (
                 <button onClick={() => setStSuites(new Set())} className="ml-2 text-xs underline text-muted-foreground">clear</button>
               )}
             </p>
             <div className="bg-background border rounded-md p-3 max-h-48 overflow-y-auto">
               {stFolders.map((s) => (
-                <SuiteNode key={s.id} suite={s} selected={stSuites} onToggle={(id) => setStSuites(toggleSuite(stSuites, id))} />
+                <SuiteFolderNode key={s.id} suite={s} selected={stSuites} onToggle={(id) => setStSuites(toggleSuite(stSuites, id))} />
               ))}
             </div>
           </div>
@@ -620,7 +681,7 @@ export default function ExportPage() {
         >
           {stLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
           Export Suites
-          {stSuites.size > 0 ? ` (${stSuites.size} folder${stSuites.size > 1 ? 's' : ''})` : stProject ? ` — ${projectName(stProject)}` : ' — All'}
+          {stSuites.size > 0 ? ` (${stSuites.size} suite${stSuites.size > 1 ? 's' : ''})` : stProject ? ` — ${projectName(stProject)}` : ' — All'}
         </button>
       </Section>
 
