@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { useIsViewer } from '@/stores/authStore'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { api } from '@/lib/api'
@@ -75,6 +76,7 @@ function FolderNode({
   onDelete: (suite: Suite) => void
   depth?: number
 }) {
+  const isViewer = useIsViewer()
   const [expanded, setExpanded] = useState(true)
   const [hovered, setHovered] = useState(false)
   const hasChildren = suite.children.length > 0
@@ -107,7 +109,7 @@ function FolderNode({
         )}
         <span className="flex-1 truncate ml-1">{suite.name}</span>
         <span className="text-xs text-muted-foreground mr-1">{suite._count.testCases}</span>
-        {hovered && (
+        {hovered && !isViewer && (
           <div className="flex gap-0.5" onClick={(e) => e.stopPropagation()}>
             <button
               title="Add subfolder"
@@ -812,6 +814,7 @@ function ImportModal({ projectId, suites, onClose }: {
 // ─── Main Tab ─────────────────────────────────────────────────────────────────
 
 export default function TestCasesTab({ projectId }: { projectId: string }) {
+  const isViewer = useIsViewer()
   const qc = useQueryClient()
 
   // Folder state
@@ -888,13 +891,15 @@ export default function TestCasesTab({ projectId }: { projectId: string }) {
       <div className="w-52 border-r flex flex-col shrink-0">
         <div className="flex items-center justify-between px-3 py-2.5 border-b">
           <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Folders</span>
-          <button
-            onClick={() => setFolderModal({ open: true, editSuite: null, parentId: null })}
-            title="New folder"
-            className="text-muted-foreground hover:text-foreground"
-          >
-            <Plus className="h-3.5 w-3.5" />
-          </button>
+          {!isViewer && (
+            <button
+              onClick={() => setFolderModal({ open: true, editSuite: null, parentId: null })}
+              title="New folder"
+              className="text-muted-foreground hover:text-foreground"
+            >
+              <Plus className="h-3.5 w-3.5" />
+            </button>
+          )}
         </div>
         <div className="flex-1 overflow-y-auto py-1 px-1">
           {/* All */}
@@ -990,18 +995,22 @@ export default function TestCasesTab({ projectId }: { projectId: string }) {
           )}
 
           <div className="flex-1" />
-          <button
-            onClick={() => setImportOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-md hover:bg-muted"
-          >
-            <Upload className="h-3.5 w-3.5" /> Import
-          </button>
-          <button
-            onClick={() => setTcModal({ open: true, editId: null })}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
-          >
-            <Plus className="h-3.5 w-3.5" /> New Test Case
-          </button>
+          {!isViewer && (
+            <button
+              onClick={() => setImportOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-md hover:bg-muted"
+            >
+              <Upload className="h-3.5 w-3.5" /> Import
+            </button>
+          )}
+          {!isViewer && (
+            <button
+              onClick={() => setTcModal({ open: true, editId: null })}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
+            >
+              <Plus className="h-3.5 w-3.5" /> New Test Case
+            </button>
+          )}
         </div>
 
         {/* Table */}
@@ -1044,22 +1053,24 @@ export default function TestCasesTab({ projectId }: { projectId: string }) {
                     <td className="px-4 py-2.5 text-xs">{tc.type}</td>
                     <td className="px-4 py-2.5 text-xs">{tc.scenarioType}</td>
                     <td className="px-4 py-2.5">
-                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity justify-end">
-                        <button
-                          onClick={() => setTcModal({ open: true, editId: tc.id })}
-                          className="p-1 rounded hover:bg-muted"
-                          title="Edit"
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          onClick={() => setDeleteConfirm(tc.id)}
-                          className="p-1 rounded hover:bg-destructive/10 text-destructive"
-                          title="Delete"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
+                      {!isViewer && (
+                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity justify-end">
+                          <button
+                            onClick={() => setTcModal({ open: true, editId: tc.id })}
+                            className="p-1 rounded hover:bg-muted"
+                            title="Edit"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            onClick={() => setDeleteConfirm(tc.id)}
+                            className="p-1 rounded hover:bg-destructive/10 text-destructive"
+                            title="Delete"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ))}

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useIsViewer } from '@/stores/authStore'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import {
@@ -757,6 +758,7 @@ function SuiteDetailPanel({
 // ─── Main Tab ─────────────────────────────────────────────────────────────────
 
 export default function TestSuitesTab({ projectId }: { projectId: string }) {
+  const isViewer = useIsViewer()
   const qc = useQueryClient()
 
   const [selectedSuiteId, setSelectedSuiteId] = useState<string | null>(null)
@@ -812,13 +814,15 @@ export default function TestSuitesTab({ projectId }: { projectId: string }) {
       <div className="w-52 border-r flex flex-col shrink-0">
         <div className="flex items-center justify-between px-3 py-2.5 border-b">
           <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Folders</span>
-          <button
-            onClick={() => setFolderModal({ open: true, editSuite: null, parentId: null })}
-            title="New folder"
-            className="text-muted-foreground hover:text-foreground"
-          >
-            <Plus className="h-3.5 w-3.5" />
-          </button>
+          {!isViewer && (
+            <button
+              onClick={() => setFolderModal({ open: true, editSuite: null, parentId: null })}
+              title="New folder"
+              className="text-muted-foreground hover:text-foreground"
+            >
+              <Plus className="h-3.5 w-3.5" />
+            </button>
+          )}
         </div>
         <div className="flex-1 overflow-y-auto py-1 px-1">
           <div
@@ -859,12 +863,14 @@ export default function TestSuitesTab({ projectId }: { projectId: string }) {
               ? suites.find((s) => s.id === selectedSuiteId)?.name ?? 'Folder'
               : 'All Test Suites'}
           </span>
-          <button
-            onClick={() => setCreateOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
-          >
-            <Plus className="h-3.5 w-3.5" /> New Suite
-          </button>
+          {!isViewer && (
+            <button
+              onClick={() => setCreateOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
+            >
+              <Plus className="h-3.5 w-3.5" /> New Suite
+            </button>
+          )}
         </div>
 
         <div className="flex-1 overflow-y-auto p-5">
@@ -907,12 +913,14 @@ export default function TestSuitesTab({ projectId }: { projectId: string }) {
                     >
                       Open
                     </button>
-                    <button
-                      onClick={() => setDeleteConfirm(run.id)}
-                      className="p-1.5 rounded border border-destructive/30 text-destructive hover:bg-destructive/5"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
+                    {!isViewer && (
+                      <button
+                        onClick={() => setDeleteConfirm(run.id)}
+                        className="p-1.5 rounded border border-destructive/30 text-destructive hover:bg-destructive/5"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}
