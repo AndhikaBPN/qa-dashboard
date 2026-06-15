@@ -80,7 +80,12 @@ export const testRunRoutes: FastifyPluginAsync = async (fastify) => {
         suite: { select: { id: true, name: true } },
         executions: {
           include: {
-            testCase: { select: { id: true, tcId: true, title: true, priority: true, type: true } },
+            testCase: {
+              select: {
+                id: true, tcId: true, title: true, priority: true, type: true,
+                scenarioType: true, expectedResult: true, jiraIssueKey: true, precondition: true,
+              },
+            },
             executor: { select: { id: true, name: true } },
           },
           orderBy: { testCase: { tcId: 'asc' } },

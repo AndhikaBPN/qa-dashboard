@@ -23,6 +23,19 @@ type TC = {
   suite?: { id: string; name: string } | null
   executions: Execution[]
 }
+type TestRunItem = {
+  id: string; name: string; suiteId: string | null; projectId: string | null
+  createdAt: string; completedAt: string | null
+  createdBy?: { name: string }; _count?: { executions: number }
+}
+type RunExecution = {
+  id: string; status: string; actualResult?: string | null
+  testCase: {
+    id: string; tcId: string; title: string; priority: string; type: string
+    scenarioType: string; expectedResult: string; jiraIssueKey?: string | null; precondition?: string | null
+  }
+  executor?: { name: string }
+}
 type BugItem = {
   id: string; bugId: string; title: string; severity: string; priority: string
   type: string; status: string; steps: unknown; expectedResult: string; actualResult: string
@@ -179,25 +192,65 @@ function exportBugXlsx(bugs: BugItem[], projectName: string, filename: string) {
   XLSX.writeFile(wb, filename)
 }
 
-function exportSuiteXlsx(suites: Suite[], projectName: string, filename: string) {
-  const wb = XLSX.utils.book_new()
-  const flat: Record<string, string | number>[] = []
-  const visit = (s: Suite, depth: number) => {
-    flat.push({
-      'Suite Name': ('  '.repeat(depth)) + s.name,
-      'TC Count': s._count?.testCases ?? 0,
-    })
-    s.children?.forEach((c) => visit(c, depth + 1))
+const RUN_EXPORT_COLS = [
+  'TC-ID', 'Title', 'Priority', 'Type', 'Precondition',
+  'Expected Result', 'Actual Result', 'Status', 'Scenario Type', 'Jira Issue Key', 'Executed By',
+]
+
+function buildRunRow(exec: RunExecution): Record<string, string> {
+  return {
+    'TC-ID': exec.testCase.tcId,
+    'Title': exec.testCase.title,
+    'Priority': exec.testCase.priority,
+    'Type': exec.testCase.type,
+    'Precondition': exec.testCase.precondition ?? '',
+    'Expected Result': exec.testCase.expectedResult,
+    'Actual Result': exec.actualResult ?? '',
+    'Status': exec.status,
+    'Scenario Type': exec.testCase.scenarioType,
+    'Jira Issue Key': exec.testCase.jiraIssueKey ?? '',
+    'Executed By': exec.executor?.name ?? '',
   }
-  suites.forEach((s) => visit(s, 0))
+}
+
+function computeRunSummary(runs: { executions: RunExecution[] }[]) {
+  const c = { PASS: 0, FAIL: 0, BLOCKED: 0, SKIP: 0, NOT_RUN: 0, total: 0 }
+  for (const run of runs) {
+    for (const e of run.executions) {
+      c.total++
+      const s = e.status as keyof typeof c
+      if (s in c) (c[s] as number)++
+    }
+  }
+  return c
+}
+
+function exportRunsXlsx(runs: { run: TestRunItem; executions: RunExecution[] }[], projectName: string, filename: string) {
+  const s = computeRunSummary(runs.map((r) => ({ executions: r.executions })))
+  const wb = XLSX.utils.book_new()
 
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([
     { Metric: 'Project', Value: projectName },
     { Metric: 'Generated', Value: new Date().toLocaleString() },
-    { Metric: 'Total Folders', Value: flat.length },
+    { Metric: 'Total Test Cases', Value: s.total },
+    { Metric: 'Pass', Value: s.PASS },
+    { Metric: 'Fail', Value: s.FAIL },
+    { Metric: 'Blocked', Value: s.BLOCKED },
+    { Metric: 'Skip', Value: s.SKIP },
+    { Metric: 'Not Run', Value: s.NOT_RUN },
+    { Metric: 'Pass Rate', Value: s.total > 0 ? `${Math.round((s.PASS / s.total) * 100)}%` : '-' },
   ]), 'Summary')
 
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(flat), 'Suites')
+  const rows: Record<string, string>[] = []
+  for (const { run, executions } of runs) {
+    const status = run.completedAt ? 'Completed' : 'In Progress'
+    rows.push(Object.fromEntries(RUN_EXPORT_COLS.map((c, i) =>
+      [c, i === 0 ? `>>> ${run.name} — ${status} (${executions.length} TCs)` : '']
+    )))
+    rows.push(...executions.map(buildRunRow))
+  }
+
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'Executions')
   XLSX.writeFile(wb, filename)
 }
 
@@ -308,29 +361,39 @@ function exportBugPdf(bugs: BugItem[], projectName: string, filename: string) {
 </body></html>`)
 }
 
-function exportSuitePdf(suites: Suite[], projectName: string, filename: string) {
-  const SUITE_COLS = ['Suite Name', 'TC Count']
-  const flat: { 'Suite Name': string; 'TC Count': number }[] = []
-  const visit = (s: Suite, depth: number) => {
-    flat.push({ 'Suite Name': ' '.repeat(depth * 4) + s.name, 'TC Count': s._count?.testCases ?? 0 })
-    s.children?.forEach((c) => visit(c, depth + 1))
+function exportRunsPdf(runs: { run: TestRunItem; executions: RunExecution[] }[], projectName: string, filename: string) {
+  const s = computeRunSummary(runs.map((r) => ({ executions: r.executions })))
+  const passRate = s.total > 0 ? String(Math.round((s.PASS / s.total) * 100)) + '%' : '-'
+  let body = ''
+  for (const { run, executions } of runs) {
+    const status = run.completedAt ? 'Completed' : 'In Progress'
+    const rows = executions.map((exec) => {
+      const row = buildRunRow(exec)
+      const st = row['Status']
+      return '<tr>' + RUN_EXPORT_COLS.map((c) => {
+        const val = nl(row[c] ?? '')
+        return c === 'Status' ? '<td class="' + st + '">' + val + '</td>' : '<td>' + val + '</td>'
+      }).join('') + '</tr>'
+    }).join('')
+    body += '<div class="fh">\u{1F4CB} ' + esc(run.name) + ' — ' + status + ' (' + executions.length + ' TCs)</div>'
+      + '<table><thead><tr>' + RUN_EXPORT_COLS.map((c) => '<th>' + c + '</th>').join('') + '</tr></thead>'
+      + '<tbody>' + rows + '</tbody></table>'
   }
-  suites.forEach((s) => visit(s, 0))
-
-  const total = flat.reduce((n, r) => n + r['TC Count'], 0)
-  const rows = flat.map((r) => SUITE_COLS.map((c) => `<td>${nl(String((r as Record<string, string | number>)[c]))}</td>`).join('')).map((r) => `<tr>${r}</tr>`).join('')
-
-  openPrint(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${esc(filename)}</title>
-<style>${PDF_BASE_STYLE}</style></head><body>
-<h1>Test Suites — ${esc(projectName)}</h1>
-<div class="meta">Generated: ${new Date().toLocaleString()}</div>
-<div class="summary">${summaryCards([
-    { lb: 'Total Folders', value: flat.length },
-    { lb: 'Total Test Cases', value: total },
-  ])}</div>
-<table><thead><tr>${SUITE_COLS.map((c) => `<th>${c}</th>`).join('')}</tr></thead>
-<tbody>${rows}</tbody></table>
-</body></html>`)
+  const cards = summaryCards([
+    { lb: 'Total TCs', value: s.total },
+    { lb: 'Pass', value: s.PASS, color: STATUS_COLOR.PASS },
+    { lb: 'Fail', value: s.FAIL, color: STATUS_COLOR.FAIL },
+    { lb: 'Blocked', value: s.BLOCKED, color: STATUS_COLOR.BLOCKED },
+    { lb: 'Skip', value: s.SKIP, color: STATUS_COLOR.SKIP },
+    { lb: 'Not Run', value: s.NOT_RUN, color: STATUS_COLOR.NOT_RUN },
+    { lb: 'Pass Rate', value: passRate },
+  ])
+  const html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>' + esc(filename) + '</title>'
+    + '<style>' + PDF_BASE_STYLE + '</style></head><body>'
+    + '<h1>Test Suite Executions — ' + esc(projectName) + '</h1>'
+    + '<div class="meta">Generated: ' + new Date().toLocaleString() + ' | ' + runs.length + ' test suite(s)</div>'
+    + '<div class="summary">' + cards + '</div>' + body + '</body></html>'
+  openPrint(html)
 }
 
 /* ─── UI sub-components ──────────────────────────────────────────── */
@@ -361,12 +424,12 @@ function SuiteNode({ suite, selected, onToggle }: { suite: Suite; selected: Set<
   )
 }
 
-/* Folder = expand/collapse only (no checkbox). Children = checkable test suites. */
-function SuiteFolderNode({
-  suite, selected, onToggle,
-}: { suite: Suite; selected: Set<string>; onToggle: (id: string) => void }) {
+/* Folder row: expand/collapse to reveal TestRun records (the actual "test suites"). */
+function SuiteRunPickerNode({
+  suite, runs, selected, onToggle,
+}: { suite: Suite; runs: TestRunItem[]; selected: Set<string>; onToggle: (id: string) => void }) {
   const [open, setOpen] = useState(false)
-  const hasChildren = !!suite.children?.length
+  const folderRuns = runs.filter((r) => r.suiteId === suite.id)
 
   return (
     <div>
@@ -375,46 +438,45 @@ function SuiteFolderNode({
         onClick={() => setOpen((o) => !o)}
       >
         <span className="text-muted-foreground shrink-0">
-          {hasChildren
-            ? open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />
-            : <span className="w-3.5 h-3.5 inline-block" />}
+          {open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
         </span>
         <Folder className="h-3.5 w-3.5 shrink-0 text-amber-500" />
         <span className="font-medium truncate">{suite.name}</span>
-        {hasChildren && !open && (
+        {!open && (
           <span className="ml-auto text-[10px] text-muted-foreground shrink-0">
-            {suite.children!.length} suite{suite.children!.length !== 1 ? 's' : ''}
+            {folderRuns.length} suite{folderRuns.length !== 1 ? 's' : ''}
           </span>
         )}
       </button>
 
       {open && (
         <div className="pl-6 border-l border-border/60 ml-3.5 mt-0.5 space-y-0.5">
-          {suite.children?.map((child) =>
-            child.children?.length ? (
-              /* nested folder inside folder → recurse */
-              <SuiteFolderNode key={child.id} suite={child} selected={selected} onToggle={onToggle} />
-            ) : (
-              /* leaf suite → checkbox */
-              <label
-                key={child.id}
-                className="flex items-center gap-1.5 text-xs cursor-pointer select-none py-0.5 px-1 rounded hover:bg-muted/40"
-              >
-                <input
-                  type="checkbox"
-                  checked={selected.has(child.id)}
-                  onChange={() => onToggle(child.id)}
-                  className="h-3 w-3 shrink-0"
-                />
-                <span className="truncate">{child.name}</span>
-                {child._count !== undefined && (
-                  <span className="text-muted-foreground ml-0.5 shrink-0">({child._count.testCases})</span>
-                )}
-              </label>
-            )
-          )}
-          {!suite.children?.length && (
-            <p className="text-[10px] text-muted-foreground px-1 py-0.5">No test suites</p>
+          {folderRuns.map((run) => (
+            <label
+              key={run.id}
+              className="flex items-center gap-1.5 text-xs cursor-pointer select-none py-0.5 px-1 rounded hover:bg-muted/40"
+            >
+              <input
+                type="checkbox"
+                checked={selected.has(run.id)}
+                onChange={() => onToggle(run.id)}
+                className="h-3 w-3 shrink-0"
+              />
+              <span className="truncate">{run.name}</span>
+              <span className={`ml-1 shrink-0 text-[10px] px-1.5 py-0.5 rounded-full ${
+                run.completedAt
+                  ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                  : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+              }`}>
+                {run.completedAt ? 'Completed' : 'In Progress'}
+              </span>
+              {run._count !== undefined && (
+                <span className="text-muted-foreground shrink-0">({run._count.executions} TCs)</span>
+              )}
+            </label>
+          ))}
+          {folderRuns.length === 0 && (
+            <p className="text-[10px] text-muted-foreground px-1 py-0.5">No test suites in this folder</p>
           )}
         </div>
       )}
@@ -482,7 +544,7 @@ export default function ExportPage() {
 
   // Test Suites state
   const [stProject, setStProject] = useState('')
-  const [stSuites, setStSuites] = useState<Set<string>>(new Set())
+  const [stRunIds, setStRunIds] = useState<Set<string>>(new Set())
   const [stFormat, setStFormat] = useState<'xlsx' | 'pdf'>('xlsx')
   const [stLoading, setStLoading] = useState(false)
 
@@ -503,6 +565,12 @@ export default function ExportPage() {
     queryFn: () => api.get('/suites').then((r) => r.data.data as Suite[]),
   })
   const allSuites = suitesTree ?? []
+
+  const { data: testRunsData } = useQuery({
+    queryKey: ['test-runs-all'],
+    queryFn: () => api.get('/test-runs').then((r) => r.data.data as TestRunItem[]),
+  })
+  const allRuns = testRunsData ?? []
 
   function toggleSuite(set: Set<string>, id: string): Set<string> {
     const next = new Set(set)
@@ -543,23 +611,36 @@ export default function ExportPage() {
     }
   }
 
-  /* ── Suite export ──────────────────────────────────────────────── */
+  /* ── Suite (TestRun) export ────────────────────────────────────── */
 
   async function doExportSuites() {
     setStLoading(true)
     try {
-      let suites = filterSuitesByProject(allSuites, stProject)
-      if (stSuites.size > 0) {
-        suites = suites.filter((s) => stSuites.has(s.id))
+      // Determine which runs to export
+      let runsToExport = stProject
+        ? allRuns.filter((r) => r.projectId === stProject)
+        : allRuns
+      if (stRunIds.size > 0) {
+        runsToExport = runsToExport.filter((r) => stRunIds.has(r.id))
       }
+
+      // Fetch full detail (executions) for each run
+      const detailed = await Promise.all(
+        runsToExport.map(async (run) => {
+          const res = await api.get(`/test-runs/${run.id}`)
+          const full = res.data.data as { executions: RunExecution[] }
+          return { run, executions: full.executions }
+        })
+      )
+
       const pName = stProject ? projectName(stProject) : 'All Projects'
       const slug = stProject ? projectName(stProject).replace(/\s+/g, '_') : 'all'
       const filename = `testsuites_${slug}`
 
       if (stFormat === 'xlsx') {
-        exportSuiteXlsx(suites, pName, `${filename}.xlsx`)
+        exportRunsXlsx(detailed, pName, `${filename}.xlsx`)
       } else {
-        exportSuitePdf(suites, pName, filename)
+        exportRunsPdf(detailed, pName, filename)
       }
     } finally {
       setStLoading(false)
@@ -602,7 +683,6 @@ export default function ExportPage() {
   const bgFolders = filterSuitesByType(filterSuitesByProject(allSuites, bgProject), 'RUN_FOLDER')
 
   const flatTcFolders = flattenSuiteTree(tcFolders)
-  const flatStFolders = flattenSuiteTree(stFolders)
   const flatBgFolders = flattenSuiteTree(bgFolders)
 
   return (
@@ -650,25 +730,31 @@ export default function ExportPage() {
       {/* ── Test Suites ────────────────────────────────────────────── */}
       <Section icon={<FolderTree className="h-4 w-4" />} title="Test Suites">
         <div className="flex flex-wrap gap-3 items-end">
-          <ProjectSelect value={stProject} onChange={(v) => { setStProject(v); setStSuites(new Set()) }} projects={projects} />
+          <ProjectSelect value={stProject} onChange={(v) => { setStProject(v); setStRunIds(new Set()) }} projects={projects} />
           <div className="space-y-1">
             <label className="text-xs text-muted-foreground">Format</label>
             <FormatToggle value={stFormat} onChange={setStFormat} />
           </div>
         </div>
 
-        {flatStFolders.length > 0 && (
+        {stFolders.length > 0 && (
           <div>
             <p className="text-xs text-muted-foreground mb-2">
               Expand folder to select test suites
-              {stSuites.size > 0 && <span className="ml-2 font-medium text-foreground">· {stSuites.size} suite{stSuites.size > 1 ? 's' : ''} selected</span>}
-              {stSuites.size > 0 && (
-                <button onClick={() => setStSuites(new Set())} className="ml-2 text-xs underline text-muted-foreground">clear</button>
+              {stRunIds.size > 0 && <span className="ml-2 font-medium text-foreground">· {stRunIds.size} suite{stRunIds.size > 1 ? 's' : ''} selected</span>}
+              {stRunIds.size > 0 && (
+                <button onClick={() => setStRunIds(new Set())} className="ml-2 text-xs underline text-muted-foreground">clear</button>
               )}
             </p>
-            <div className="bg-background border rounded-md p-3 max-h-48 overflow-y-auto">
+            <div className="bg-background border rounded-md p-3 max-h-56 overflow-y-auto space-y-0.5">
               {stFolders.map((s) => (
-                <SuiteFolderNode key={s.id} suite={s} selected={stSuites} onToggle={(id) => setStSuites(toggleSuite(stSuites, id))} />
+                <SuiteRunPickerNode
+                  key={s.id}
+                  suite={s}
+                  runs={stProject ? allRuns.filter((r) => r.projectId === stProject) : allRuns}
+                  selected={stRunIds}
+                  onToggle={(id) => setStRunIds(toggleSuite(stRunIds, id))}
+                />
               ))}
             </div>
           </div>
@@ -681,7 +767,7 @@ export default function ExportPage() {
         >
           {stLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
           Export Suites
-          {stSuites.size > 0 ? ` (${stSuites.size} suite${stSuites.size > 1 ? 's' : ''})` : stProject ? ` — ${projectName(stProject)}` : ' — All'}
+          {stRunIds.size > 0 ? ` (${stRunIds.size} suite${stRunIds.size > 1 ? 's' : ''})` : stProject ? ` — ${projectName(stProject)}` : ' — All'}
         </button>
       </Section>
 
