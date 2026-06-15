@@ -1,7 +1,8 @@
 import Fastify from 'fastify'
 import cors from '@fastify/cors'
 import multipart from '@fastify/multipart'
-import authPlugin from './middleware/auth.js'
+import jwt from 'jsonwebtoken'
+import authPlugin, { type JwtPayload } from './middleware/auth.js'
 import { authRoutes } from './routes/auth.js'
 import { projectRoutes } from './routes/projects.js'
 import { userRoutes } from './routes/users.js'
@@ -33,6 +34,24 @@ export async function buildApp() {
       error: 'INTERNAL_ERROR',
       message: isDev ? error.message : 'Something went wrong',
     })
+  })
+
+  // Block VIEWER role from all write operations globally.
+  // Runs before each route's preHandler; reads the token directly so it doesn't
+  // depend on authenticate having already set request.user.
+  const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
+  app.addHook('preHandler', async (request, reply) => {
+    if (!WRITE_METHODS.has(request.method)) return
+    const header = request.headers.authorization
+    if (!header?.startsWith('Bearer ')) return // let authenticate handle 401
+    try {
+      const payload = jwt.verify(header.slice(7), process.env.JWT_SECRET!) as JwtPayload
+      if (payload.type === 'access' && payload.role === 'VIEWER') {
+        return reply.code(403).send({ error: 'FORBIDDEN', message: 'Viewers cannot modify data' })
+      }
+    } catch {
+      // invalid token — let route-level authenticate handle the 401
+    }
   })
 
   const PREFIX = '/api/v1'

@@ -11,6 +11,19 @@ export const ProjectCreateSchema = z.object({
 export const ProjectUpdateSchema = ProjectCreateSchema.partial()
 
 export const RoleEnum = z.enum(['ADMIN', 'QA', 'VIEWER'])
+
+export const UserCreateSchema = z.object({
+  email: z.string().email(),
+  name: z.string().min(1).max(100),
+  password: z.string().min(6),
+  role: RoleEnum.default('QA'),
+})
+
+export const UserUpdateSchema = z.object({
+  name: z.string().min(1).max(100).optional(),
+  role: RoleEnum.optional(),
+  password: z.string().min(6).optional(),
+})
 export const PriorityEnum = z.enum(['CRITICAL', 'HIGH', 'MEDIUM', 'LOW', 'LOWEST'])
 export const TestTypeEnum = z.enum(['UNIT', 'INTEGRATION', 'FUNCTIONAL', 'PERFORMANCE', 'API', 'SECURITY'])
 export const ScenarioTypeEnum = z.enum(['POSITIVE', 'NEGATIVE', 'EDGE_CASE'])

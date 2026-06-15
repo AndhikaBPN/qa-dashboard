@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom'
-import { LayoutDashboard, FolderKanban, PlayCircle, BarChart3, ShieldCheck, Bug, LogOut, FileDown } from 'lucide-react'
+import { LayoutDashboard, FolderKanban, PlayCircle, BarChart3, ShieldCheck, Bug, LogOut, FileDown, Upload } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
 
 const nav = [
@@ -9,6 +9,7 @@ const nav = [
   { to: '/test-runs', label: 'Test Runs', icon: PlayCircle },
   { to: '/reports', label: 'Reports', icon: BarChart3 },
   { to: '/export', label: 'Export', icon: FileDown },
+  { to: '/import-jobs', label: 'Import Jobs', icon: Upload },
 ]
 
 export default function AppShell({ children }: { children: React.ReactNode }) {

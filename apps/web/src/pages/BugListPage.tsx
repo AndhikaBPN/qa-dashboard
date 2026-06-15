@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { ArrowLeft, Plus, X, Trash2, Search, Pencil, Link } from 'lucide-react'
 import BugFormModal from '@/components/bug/BugFormModal'
+import { useIsViewer } from '@/stores/authStore'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -95,6 +96,7 @@ function BugDetailPanel({ bug, onClose, onEdit, onDelete }: {
   onDelete: () => void
 }) {
   const qc = useQueryClient()
+  const isViewer = useIsViewer()
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null)
 
   const updateStatusMut = useMutation({
@@ -118,12 +120,16 @@ function BugDetailPanel({ bug, onClose, onEdit, onDelete }: {
             <h2 className="text-sm font-semibold leading-snug">{bug.title}</h2>
           </div>
           <div className="flex items-center gap-1 shrink-0">
-            <button onClick={onEdit} title="Edit" className="p-1.5 rounded hover:bg-muted">
-              <Pencil className="h-3.5 w-3.5" />
-            </button>
-            <button onClick={onDelete} title="Delete" className="p-1.5 rounded hover:bg-destructive/20 text-destructive">
-              <Trash2 className="h-3.5 w-3.5" />
-            </button>
+            {!isViewer && (
+              <button onClick={onEdit} title="Edit" className="p-1.5 rounded hover:bg-muted">
+                <Pencil className="h-3.5 w-3.5" />
+              </button>
+            )}
+            {!isViewer && (
+              <button onClick={onDelete} title="Delete" className="p-1.5 rounded hover:bg-destructive/20 text-destructive">
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            )}
             <button onClick={onClose} className="p-1.5 rounded hover:bg-muted ml-1">
               <X className="h-4 w-4" />
             </button>
@@ -295,6 +301,7 @@ export default function BugListPage() {
   const { projectId } = useParams<{ projectId: string }>()
   const navigate = useNavigate()
   const qc = useQueryClient()
+  const isViewer = useIsViewer()
 
   const [selectedBug, setSelectedBug] = useState<Bug | null>(null)
   const [formOpen, setFormOpen] = useState(false)
@@ -378,10 +385,12 @@ export default function BugListPage() {
         <span className="text-sm font-semibold">{projectData?.name ?? '...'}</span>
         <div className="ml-auto flex items-center gap-2">
           <span className="text-xs text-muted-foreground">{bugs.length} bugs</span>
-          <button onClick={openCreate}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90">
-            <Plus className="h-3.5 w-3.5" /> Report Bug
-          </button>
+          {!isViewer && (
+            <button onClick={openCreate}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90">
+              <Plus className="h-3.5 w-3.5" /> Report Bug
+            </button>
+          )}
         </div>
       </div>
 
@@ -473,15 +482,17 @@ export default function BugListPage() {
                     {bug.reporter.name}
                   </td>
                   <td className="px-4 py-2.5 whitespace-nowrap">
-                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
-                      <button onClick={() => openEdit(bug)} className="p-1 rounded hover:bg-muted" title="Edit">
-                        <Pencil className="h-3.5 w-3.5" />
-                      </button>
-                      <button onClick={() => setDeleteTarget(bug)}
-                        className="p-1 rounded hover:bg-destructive/20 text-destructive" title="Delete">
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
+                    {!isViewer && (
+                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
+                        <button onClick={() => openEdit(bug)} className="p-1 rounded hover:bg-muted" title="Edit">
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                        <button onClick={() => setDeleteTarget(bug)}
+                          className="p-1 rounded hover:bg-destructive/20 text-destructive" title="Delete">
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    )}
                   </td>
                 </tr>
               ))}

@@ -1,9 +1,12 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { useIsViewer } from '@/stores/authStore'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
 import { api } from '@/lib/api'
+import * as XLSX from 'xlsx'
 import {
   ChevronRight, ChevronDown, Folder, FolderOpen,
-  Plus, Pencil, Trash2, Search, X,
+  Plus, Pencil, Trash2, Search, X, Upload, CheckCircle2, AlertCircle,
 } from 'lucide-react'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -73,6 +76,7 @@ function FolderNode({
   onDelete: (suite: Suite) => void
   depth?: number
 }) {
+  const isViewer = useIsViewer()
   const [expanded, setExpanded] = useState(true)
   const [hovered, setHovered] = useState(false)
   const hasChildren = suite.children.length > 0
@@ -105,7 +109,7 @@ function FolderNode({
         )}
         <span className="flex-1 truncate ml-1">{suite.name}</span>
         <span className="text-xs text-muted-foreground mr-1">{suite._count.testCases}</span>
-        {hovered && (
+        {hovered && !isViewer && (
           <div className="flex gap-0.5" onClick={(e) => e.stopPropagation()}>
             <button
               title="Add subfolder"
@@ -501,9 +505,316 @@ function TcFormModal({
   )
 }
 
+// ─── Import Modal ─────────────────────────────────────────────────────────────
+
+type ImportStep = 'upload' | 'folder'
+
+interface ParsedPreview {
+  fileName: string
+  rowCount: number
+  columns: string[]
+  raw: File
+}
+
+function FolderPickerNode({
+  suite, selectedId, onSelect, depth = 0,
+}: {
+  suite: Suite
+  selectedId: string | null
+  onSelect: (id: string | null) => void
+  depth?: number
+}) {
+  const [expanded, setExpanded] = useState(true)
+  return (
+    <div>
+      <div
+        className={`flex items-center gap-1.5 rounded-md cursor-pointer text-sm py-1 transition-colors ${
+          selectedId === suite.id ? 'bg-primary/10 text-primary' : 'hover:bg-muted/50'
+        }`}
+        style={{ paddingLeft: `${8 + depth * 14}px` }}
+        onClick={() => onSelect(suite.id)}
+      >
+        <button
+          className="w-4 h-4 flex items-center justify-center shrink-0"
+          onClick={(e) => { e.stopPropagation(); setExpanded(!expanded) }}
+        >
+          {suite.children.length > 0
+            ? expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />
+            : <span className="w-3" />}
+        </button>
+        <Folder className="h-3.5 w-3.5 shrink-0 text-yellow-500" />
+        <span className="flex-1 truncate">{suite.name}</span>
+        <span className="text-xs text-muted-foreground mr-2">{suite._count.testCases}</span>
+      </div>
+      {expanded && suite.children.map((c) => (
+        <FolderPickerNode key={c.id} suite={c} selectedId={selectedId} onSelect={onSelect} depth={depth + 1} />
+      ))}
+    </div>
+  )
+}
+
+function ImportModal({ projectId, suites, onClose }: {
+  projectId: string
+  suites: Suite[]
+  onClose: () => void
+}) {
+  const navigate = useNavigate()
+  const qc = useQueryClient()
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [step, setStep] = useState<ImportStep>('upload')
+  const [preview, setPreview] = useState<ParsedPreview | null>(null)
+  const [selectedSuiteId, setSelectedSuiteId] = useState<string | null>(null)
+  const [dragging, setDragging] = useState(false)
+  const [importing, setImporting] = useState(false)
+  const [result, setResult] = useState<{ imported: number; errorCount: number; jobId: string } | null>(null)
+  const [parseError, setParseError] = useState<string | null>(null)
+
+  function handleFile(file: File) {
+    setParseError(null)
+    if (!file.name.match(/\.xlsx?$/i)) {
+      setParseError('Only .xlsx files supported')
+      return
+    }
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      try {
+        const data = new Uint8Array(e.target!.result as ArrayBuffer)
+        const wb = XLSX.read(data, { type: 'array' })
+        const ws = wb.Sheets[wb.SheetNames[0]]
+        const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: '' })
+        const cols = rows.length > 0 ? Object.keys(rows[0]) : []
+        setPreview({ fileName: file.name, rowCount: rows.length, columns: cols, raw: file })
+      } catch {
+        setParseError('Failed to parse file. Ensure it is a valid .xlsx file.')
+      }
+    }
+    reader.readAsArrayBuffer(file)
+  }
+
+  function downloadTemplate() {
+    const template = [
+      { Title: 'Example test case', Priority: 'MEDIUM', Type: 'FUNCTIONAL', Precondition: '', Steps: 'Click the button', 'Test Data': '', 'Expected Result': 'System behaves correctly', 'Scenario Type': 'POSITIVE', 'Jira Issue Key': '' },
+    ]
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(template), 'Test Cases')
+    XLSX.writeFile(wb, 'import-template.xlsx')
+  }
+
+  async function doImport() {
+    if (!preview) return
+    setImporting(true)
+    try {
+      const fd = new FormData()
+      fd.append('file', preview.raw)
+      fd.append('projectId', projectId)
+      if (selectedSuiteId) fd.append('suiteId', selectedSuiteId)
+      const res = await api.post('/test-cases/import', fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      setResult(res.data.data)
+      qc.invalidateQueries({ queryKey: ['test-cases'] })
+      qc.invalidateQueries({ queryKey: ['suites'] })
+    } catch {
+      setParseError('Import failed. Please try again.')
+    } finally {
+      setImporting(false)
+    }
+  }
+
+  function flattenSuites(list: Suite[]): { id: string; name: string }[] {
+    return list.flatMap((s) => [{ id: s.id, name: s.name }, ...flattenSuites(s.children)])
+  }
+
+  const selectedSuiteName = selectedSuiteId
+    ? flattenSuites(suites).find((s) => s.id === selectedSuiteId)?.name
+    : null
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="bg-background border rounded-lg shadow-lg w-full max-w-lg">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b">
+          <div>
+            <h2 className="text-sm font-semibold">Import Test Cases</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {step === 'upload' ? 'Upload an .xlsx file' : 'Choose target folder'}
+            </p>
+          </div>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="p-5">
+          {result ? (
+            /* ── Success state ── */
+            <div className="text-center py-4">
+              <CheckCircle2 className="h-10 w-10 text-green-400 mx-auto mb-3" />
+              <p className="text-sm font-semibold mb-1">Import completed</p>
+              <p className="text-sm text-muted-foreground">
+                {result.imported} test case{result.imported !== 1 ? 's' : ''} imported
+                {result.errorCount > 0 && `, ${result.errorCount} row${result.errorCount !== 1 ? 's' : ''} skipped`}
+              </p>
+              <div className="flex gap-2 justify-center mt-5">
+                <button
+                  onClick={() => navigate('/import-jobs')}
+                  className="px-3 py-1.5 text-sm border rounded-md hover:bg-muted"
+                >
+                  View Import Jobs
+                </button>
+                <button
+                  onClick={onClose}
+                  className="px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
+                >
+                  Done
+                </button>
+              </div>
+            </div>
+          ) : step === 'upload' ? (
+            /* ── Step 1: Upload ── */
+            <div className="space-y-4">
+              <div
+                className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${
+                  dragging ? 'border-primary bg-primary/5' : 'border-muted hover:border-primary/50'
+                }`}
+                onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
+                onDragLeave={() => setDragging(false)}
+                onDrop={(e) => {
+                  e.preventDefault()
+                  setDragging(false)
+                  const f = e.dataTransfer.files[0]
+                  if (f) handleFile(f)
+                }}
+                onClick={() => fileRef.current?.click()}
+              >
+                <Upload className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                <p className="text-sm text-muted-foreground">
+                  Drag & drop or <span className="text-primary underline">browse</span>
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">Only .xlsx files</p>
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept=".xlsx,.xls"
+                  className="hidden"
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f) }}
+                />
+              </div>
+
+              {parseError && (
+                <div className="flex items-center gap-2 text-destructive text-xs">
+                  <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                  {parseError}
+                </div>
+              )}
+
+              {preview && (
+                <div className="border rounded-md p-3 bg-muted/20 text-sm space-y-1">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="h-4 w-4 text-green-400 shrink-0" />
+                    <span className="font-medium truncate">{preview.fileName}</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground pl-6">
+                    {preview.rowCount} row{preview.rowCount !== 1 ? 's' : ''} · Columns: {preview.columns.join(', ')}
+                  </p>
+                </div>
+              )}
+
+              <button
+                onClick={downloadTemplate}
+                className="text-xs text-primary underline hover:no-underline"
+              >
+                Download template
+              </button>
+            </div>
+          ) : (
+            /* ── Step 2: Folder picker ── */
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                Select a folder to import into, or leave unselected to import without folder.
+              </p>
+              <div className="border rounded-md overflow-hidden">
+                <div
+                  className={`px-3 py-2 text-sm cursor-pointer transition-colors ${
+                    selectedSuiteId === null ? 'bg-primary/10 text-primary' : 'hover:bg-muted/50'
+                  }`}
+                  onClick={() => setSelectedSuiteId(null)}
+                >
+                  — No folder (root)
+                </div>
+                <div className="border-t max-h-56 overflow-y-auto py-1 px-1">
+                  {suites.map((s) => (
+                    <FolderPickerNode
+                      key={s.id}
+                      suite={s}
+                      selectedId={selectedSuiteId}
+                      onSelect={setSelectedSuiteId}
+                    />
+                  ))}
+                </div>
+              </div>
+              {selectedSuiteName && (
+                <p className="text-xs text-muted-foreground">
+                  Will import into: <span className="font-medium text-foreground">{selectedSuiteName}</span>
+                </p>
+              )}
+              {parseError && (
+                <div className="flex items-center gap-2 text-destructive text-xs">
+                  <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                  {parseError}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        {!result && (
+          <div className="flex justify-between items-center px-5 py-4 border-t">
+            <div>
+              {step === 'folder' && (
+                <button
+                  onClick={() => setStep('upload')}
+                  className="px-3 py-1.5 text-sm border rounded-md hover:bg-muted"
+                >
+                  Back
+                </button>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <button onClick={onClose} className="px-3 py-1.5 text-sm border rounded-md hover:bg-muted">
+                Cancel
+              </button>
+              {step === 'upload' ? (
+                <button
+                  disabled={!preview}
+                  onClick={() => preview && setStep('folder')}
+                  className="px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50"
+                >
+                  Next
+                </button>
+              ) : (
+                <button
+                  disabled={importing}
+                  onClick={doImport}
+                  className="px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50"
+                >
+                  {importing ? 'Importing…' : `Import ${preview?.rowCount ?? ''} rows`}
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ─── Main Tab ─────────────────────────────────────────────────────────────────
 
 export default function TestCasesTab({ projectId }: { projectId: string }) {
+  const isViewer = useIsViewer()
   const qc = useQueryClient()
 
   // Folder state
@@ -516,6 +827,7 @@ export default function TestCasesTab({ projectId }: { projectId: string }) {
   const [tcModal, setTcModal] = useState<{ open: boolean; editId: string | null }>({
     open: false, editId: null,
   })
+  const [importOpen, setImportOpen] = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
 
   // Filters
@@ -579,13 +891,15 @@ export default function TestCasesTab({ projectId }: { projectId: string }) {
       <div className="w-52 border-r flex flex-col shrink-0">
         <div className="flex items-center justify-between px-3 py-2.5 border-b">
           <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Folders</span>
-          <button
-            onClick={() => setFolderModal({ open: true, editSuite: null, parentId: null })}
-            title="New folder"
-            className="text-muted-foreground hover:text-foreground"
-          >
-            <Plus className="h-3.5 w-3.5" />
-          </button>
+          {!isViewer && (
+            <button
+              onClick={() => setFolderModal({ open: true, editSuite: null, parentId: null })}
+              title="New folder"
+              className="text-muted-foreground hover:text-foreground"
+            >
+              <Plus className="h-3.5 w-3.5" />
+            </button>
+          )}
         </div>
         <div className="flex-1 overflow-y-auto py-1 px-1">
           {/* All */}
@@ -681,12 +995,22 @@ export default function TestCasesTab({ projectId }: { projectId: string }) {
           )}
 
           <div className="flex-1" />
-          <button
-            onClick={() => setTcModal({ open: true, editId: null })}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
-          >
-            <Plus className="h-3.5 w-3.5" /> New Test Case
-          </button>
+          {!isViewer && (
+            <button
+              onClick={() => setImportOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-md hover:bg-muted"
+            >
+              <Upload className="h-3.5 w-3.5" /> Import
+            </button>
+          )}
+          {!isViewer && (
+            <button
+              onClick={() => setTcModal({ open: true, editId: null })}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
+            >
+              <Plus className="h-3.5 w-3.5" /> New Test Case
+            </button>
+          )}
         </div>
 
         {/* Table */}
@@ -729,22 +1053,24 @@ export default function TestCasesTab({ projectId }: { projectId: string }) {
                     <td className="px-4 py-2.5 text-xs">{tc.type}</td>
                     <td className="px-4 py-2.5 text-xs">{tc.scenarioType}</td>
                     <td className="px-4 py-2.5">
-                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity justify-end">
-                        <button
-                          onClick={() => setTcModal({ open: true, editId: tc.id })}
-                          className="p-1 rounded hover:bg-muted"
-                          title="Edit"
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          onClick={() => setDeleteConfirm(tc.id)}
-                          className="p-1 rounded hover:bg-destructive/10 text-destructive"
-                          title="Delete"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
+                      {!isViewer && (
+                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity justify-end">
+                          <button
+                            onClick={() => setTcModal({ open: true, editId: tc.id })}
+                            className="p-1 rounded hover:bg-muted"
+                            title="Edit"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            onClick={() => setDeleteConfirm(tc.id)}
+                            className="p-1 rounded hover:bg-destructive/10 text-destructive"
+                            title="Delete"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -772,6 +1098,15 @@ export default function TestCasesTab({ projectId }: { projectId: string }) {
           editId={tcModal.editId}
           defaultSuiteId={selectedSuiteId}
           onClose={() => setTcModal({ open: false, editId: null })}
+        />
+      )}
+
+      {/* Import Modal */}
+      {importOpen && (
+        <ImportModal
+          projectId={projectId}
+          suites={suites}
+          onClose={() => setImportOpen(false)}
         />
       )}
 

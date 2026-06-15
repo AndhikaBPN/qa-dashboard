@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useIsViewer } from '@/stores/authStore'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { api } from '@/lib/api'
@@ -25,6 +26,7 @@ export default function ProjectsPage() {
   const qc = useQueryClient()
   const navigate = useNavigate()
   const { selectedProjectId, setSelectedProjectId } = useProjectStore()
+  const isViewer = useIsViewer()
 
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState<Project | null>(null)
@@ -89,12 +91,14 @@ export default function ProjectsPage() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-xl font-semibold">Projects</h1>
-        <button
-          onClick={openCreate}
-          className="px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
-        >
-          + New Project
-        </button>
+        {!isViewer && (
+          <button
+            onClick={openCreate}
+            className="px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
+          >
+            + New Project
+          </button>
+        )}
       </div>
 
       {isLoading ? (
@@ -133,20 +137,22 @@ export default function ProjectsPage() {
                   <span>{p._count.testRuns} runs</span>
                 </div>
               </div>
-              <div className="flex gap-2 ml-4" onClick={(e) => e.stopPropagation()}>
-                <button
-                  onClick={() => openEdit(p)}
-                  className="text-xs px-2 py-1 rounded border hover:bg-muted"
-                >
-                  Edit
-                </button>
-                <button
-                  onClick={() => setDeleteConfirm(p.id)}
-                  className="text-xs px-2 py-1 rounded border border-destructive/30 text-destructive hover:bg-destructive/5"
-                >
-                  Delete
-                </button>
-              </div>
+              {!isViewer && (
+                <div className="flex gap-2 ml-4" onClick={(e) => e.stopPropagation()}>
+                  <button
+                    onClick={() => openEdit(p)}
+                    className="text-xs px-2 py-1 rounded border hover:bg-muted"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    onClick={() => setDeleteConfirm(p.id)}
+                    className="text-xs px-2 py-1 rounded border border-destructive/30 text-destructive hover:bg-destructive/5"
+                  >
+                    Delete
+                  </button>
+                </div>
+              )}
             </div>
           ))}
         </div>

@@ -17,6 +17,10 @@ interface AuthState {
   logout: () => void
 }
 
+export function useIsViewer() {
+  return useAuthStore((s) => s.user?.role === 'VIEWER')
+}
+
 export const useAuthStore = create<AuthState>()(
   persist(
     (set) => ({

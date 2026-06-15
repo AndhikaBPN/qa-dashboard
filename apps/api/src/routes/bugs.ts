@@ -44,7 +44,7 @@ export const bugRoutes: FastifyPluginAsync = async (fastify) => {
           reporter: { select: { id: true, name: true } },
           assignee: { select: { id: true, name: true } },
           project: { select: { id: true, name: true } },
-          testCase: { select: { id: true, tcId: true, title: true } },
+          testCase: { select: { id: true, tcId: true, title: true, suiteId: true } },
         },
       }),
     ])
