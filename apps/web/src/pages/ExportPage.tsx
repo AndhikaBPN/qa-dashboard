@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import * as XLSX from 'xlsx'
+import ExcelJS from 'exceljs'
 import { api } from '@/lib/api'
 import {
   Download, FlaskConical, FolderTree, Bug,
@@ -225,33 +226,173 @@ function computeRunSummary(runs: { executions: RunExecution[] }[]) {
   return c
 }
 
-function exportRunsXlsx(runs: { run: TestRunItem; executions: RunExecution[] }[], projectName: string, filename: string) {
-  const s = computeRunSummary(runs.map((r) => ({ executions: r.executions })))
-  const wb = XLSX.utils.book_new()
+/* Palette */
+const C = {
+  navy:      'FF1E293B',
+  white:     'FFFFFFFF',
+  passLight: 'FFDCFCE7',
+  passText:  'FF166534',
+  failLight: 'FFFEE2E2',
+  failText:  'FF991B1B',
+  blockLight:'FFF3E8FF',
+  blockText: 'FF6B21A8',
+  skipLight: 'FFFEF3C7',
+  skipText:  'FF92400E',
+  gray:      'FFF1F5F9',
+  grayText:  'FF374151',
+  runHeader: 'FF334155',
+}
 
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([
-    { Metric: 'Project', Value: projectName },
-    { Metric: 'Generated', Value: new Date().toLocaleString() },
-    { Metric: 'Total Test Cases', Value: s.total },
-    { Metric: 'Pass', Value: s.PASS },
-    { Metric: 'Fail', Value: s.FAIL },
-    { Metric: 'Blocked', Value: s.BLOCKED },
-    { Metric: 'Skip', Value: s.SKIP },
-    { Metric: 'Not Run', Value: s.NOT_RUN },
-    { Metric: 'Pass Rate', Value: s.total > 0 ? `${Math.round((s.PASS / s.total) * 100)}%` : '-' },
-  ]), 'Summary')
+type ArgbFill = { type: 'pattern'; pattern: 'solid'; fgColor: { argb: string } }
+function fill(argb: string): ArgbFill { return { type: 'pattern', pattern: 'solid', fgColor: { argb } } }
 
-  const rows: Record<string, string>[] = []
-  for (const { run, executions } of runs) {
-    const status = run.completedAt ? 'Completed' : 'In Progress'
-    rows.push(Object.fromEntries(RUN_EXPORT_COLS.map((c, i) =>
-      [c, i === 0 ? `>>> ${run.name} — ${status} (${executions.length} TCs)` : '']
-    )))
-    rows.push(...executions.map(buildRunRow))
+const STATUS_STYLE: Record<string, { fill: ArgbFill; font: string }> = {
+  PASS:    { fill: fill(C.passLight),  font: C.passText },
+  FAIL:    { fill: fill(C.failLight),  font: C.failText },
+  BLOCKED: { fill: fill(C.blockLight), font: C.blockText },
+  SKIP:    { fill: fill(C.skipLight),  font: C.skipText },
+  NOT_RUN: { fill: fill(C.gray),       font: C.grayText },
+}
+
+const SUMMARY_METRICS = [
+  { label: 'Pass',     key: 'PASS',    bg: C.passLight,  fg: C.passText  },
+  { label: 'Fail',     key: 'FAIL',    bg: C.failLight,  fg: C.failText  },
+  { label: 'Blocked',  key: 'BLOCKED', bg: C.blockLight, fg: C.blockText },
+  { label: 'Skip',     key: 'SKIP',    bg: C.skipLight,  fg: C.skipText  },
+  { label: 'Not Run',  key: 'NOT_RUN', bg: C.gray,       fg: C.grayText  },
+]
+
+async function exportRunsXlsx(
+  runs: { run: TestRunItem; executions: RunExecution[] }[],
+  projectName: string,
+  filename: string,
+) {
+  const sm = computeRunSummary(runs.map((r) => ({ executions: r.executions })))
+  const passRate = sm.total > 0 ? `${Math.round((sm.PASS / sm.total) * 100)}%` : '-'
+
+  const wb = new ExcelJS.Workbook()
+
+  /* ── Summary sheet ──────────────────────────────────────────────── */
+  const ws = wb.addWorksheet('Summary')
+  ws.columns = [
+    { key: 'a', width: 22 },
+    { key: 'b', width: 18 },
+  ]
+
+  // Title row
+  const titleRow = ws.addRow(['Test Suite Execution Report', ''])
+  ws.mergeCells(`A${titleRow.number}:B${titleRow.number}`)
+  titleRow.getCell(1).fill = fill(C.navy)
+  titleRow.getCell(1).font = { bold: true, size: 14, color: { argb: C.white } }
+  titleRow.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' }
+  titleRow.height = 28
+
+  // Meta rows
+  const metaData = [
+    ['Project', projectName],
+    ['Generated', new Date().toLocaleString()],
+    ['Test Suites', runs.length],
+    ['Total Test Cases', sm.total],
+  ]
+  for (const [label, value] of metaData) {
+    const r = ws.addRow([label, value])
+    r.getCell(1).fill = fill(C.navy)
+    r.getCell(1).font = { bold: true, color: { argb: C.white } }
+    r.getCell(2).fill = fill('FFE2E8F0')
+    r.getCell(2).font = { color: { argb: C.grayText } }
+    r.height = 18
   }
 
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'Executions')
-  XLSX.writeFile(wb, filename)
+  // Spacer
+  ws.addRow([])
+
+  // Status breakdown header
+  const hdrRow = ws.addRow(['Status', 'Count'])
+  hdrRow.getCell(1).fill = fill(C.runHeader)
+  hdrRow.getCell(2).fill = fill(C.runHeader)
+  hdrRow.getCell(1).font = { bold: true, color: { argb: C.white } }
+  hdrRow.getCell(2).font = { bold: true, color: { argb: C.white } }
+
+  for (const { label, key, bg, fg } of SUMMARY_METRICS) {
+    const r = ws.addRow([label, (sm as Record<string, number>)[key]])
+    r.getCell(1).fill = fill(bg); r.getCell(1).font = { bold: true, color: { argb: fg } }
+    r.getCell(2).fill = fill(bg); r.getCell(2).font = { bold: true, color: { argb: fg }, size: 13 }
+    r.height = 20
+  }
+
+  // Pass rate row
+  const prRow = ws.addRow(['Pass Rate', passRate])
+  prRow.getCell(1).fill = fill(C.navy); prRow.getCell(1).font = { bold: true, color: { argb: C.white } }
+  prRow.getCell(2).fill = fill(C.passLight); prRow.getCell(2).font = { bold: true, color: { argb: C.passText }, size: 14 }
+  prRow.height = 22
+
+  // Border all cells
+  for (let r = 1; r <= ws.rowCount; r++) {
+    for (let c = 1; c <= 2; c++) {
+      const cell = ws.getRow(r).getCell(c)
+      cell.border = { top: { style: 'thin', color: { argb: 'FFCBD5E1' } }, left: { style: 'thin', color: { argb: 'FFCBD5E1' } }, bottom: { style: 'thin', color: { argb: 'FFCBD5E1' } }, right: { style: 'thin', color: { argb: 'FFCBD5E1' } } }
+    }
+  }
+
+  /* ── Executions sheet ────────────────────────────────────────────── */
+  const es = wb.addWorksheet('Executions')
+  const colWidths: Record<string, number> = {
+    'TC-ID': 10, 'Title': 30, 'Priority': 10, 'Type': 14, 'Precondition': 20,
+    'Expected Result': 25, 'Actual Result': 25, 'Status': 11,
+    'Scenario Type': 14, 'Jira Issue Key': 14, 'Executed By': 16,
+  }
+  es.columns = RUN_EXPORT_COLS.map((h) => ({ header: h, key: h, width: colWidths[h] ?? 14 }))
+
+  // Header row styling
+  const execHdr = es.getRow(1)
+  execHdr.height = 20
+  execHdr.eachCell((cell) => {
+    cell.fill = fill(C.navy)
+    cell.font = { bold: true, color: { argb: C.white }, size: 10 }
+    cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: false }
+    cell.border = { bottom: { style: 'medium', color: { argb: 'FF0F172A' } } }
+  })
+
+  for (const { run, executions } of runs) {
+    // Test suite section header
+    const runStatus = run.completedAt ? 'Completed' : 'In Progress'
+    const sectionRow = es.addRow([`${run.name}  —  ${runStatus}  (${executions.length} TCs)`, ...Array(RUN_EXPORT_COLS.length - 1).fill('')])
+    es.mergeCells(`A${sectionRow.number}:K${sectionRow.number}`)
+    sectionRow.height = 18
+    sectionRow.getCell(1).fill = fill(C.runHeader)
+    sectionRow.getCell(1).font = { bold: true, color: { argb: C.white }, size: 10 }
+    sectionRow.getCell(1).alignment = { horizontal: 'left', vertical: 'middle' }
+
+    for (const exec of executions) {
+      const row = buildRunRow(exec)
+      const dataRow = es.addRow(RUN_EXPORT_COLS.map((c) => row[c] ?? ''))
+      const status = row['Status']
+      const st = STATUS_STYLE[status] ?? STATUS_STYLE['NOT_RUN']
+
+      dataRow.eachCell({ includeEmpty: true }, (cell, colNum) => {
+        const isStatusCol = colNum === RUN_EXPORT_COLS.indexOf('Status') + 1
+        cell.fill = st.fill
+        cell.font = isStatusCol
+          ? { bold: true, color: { argb: st.font }, size: 9 }
+          : { color: { argb: C.grayText }, size: 9 }
+        cell.alignment = { vertical: 'top', wrapText: true }
+        cell.border = {
+          bottom: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+          right: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+        }
+      })
+    }
+  }
+
+  // Download
+  const buf = await wb.xlsx.writeBuffer()
+  const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
 }
 
 /* ─── PDF (print HTML) builders ─────────────────────────────────── */
@@ -638,7 +779,7 @@ export default function ExportPage() {
       const filename = `testsuites_${slug}`
 
       if (stFormat === 'xlsx') {
-        exportRunsXlsx(detailed, pName, `${filename}.xlsx`)
+        await exportRunsXlsx(detailed, pName, `${filename}.xlsx`)
       } else {
         exportRunsPdf(detailed, pName, filename)
       }
