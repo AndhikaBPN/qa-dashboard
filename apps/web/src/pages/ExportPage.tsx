@@ -41,7 +41,7 @@ type BugItem = {
   id: string; bugId: string; title: string; severity: string; priority: string
   type: string; status: string; steps: unknown; expectedResult: string; actualResult: string
   project?: { name: string } | null; reporter?: { name: string } | null
-  assignee?: { name: string } | null; testCase?: { tcId: string; suiteId?: string | null } | null
+  assignee?: { name: string } | null; testCase?: { id: string; tcId: string; suiteId?: string | null } | null
   createdAt: string
 }
 
@@ -691,7 +691,7 @@ export default function ExportPage() {
 
   // Bugs state
   const [bgProject, setBgProject] = useState('')
-  const [bgSuites, setBgSuites] = useState<Set<string>>(new Set())
+  const [bgRunIds, setBgRunIds] = useState<Set<string>>(new Set())
   const [bgFormat, setBgFormat] = useState<'xlsx' | 'pdf'>('xlsx')
   const [bgLoading, setBugLoading] = useState(false)
 
@@ -814,8 +814,15 @@ export default function ExportPage() {
 
       let bugs: BugItem[] = await fetchAll<BugItem>('/bugs', params, 500)
 
-      if (bgSuites.size > 0) {
-        bugs = bugs.filter((b) => b.testCase?.suiteId && bgSuites.has(b.testCase.suiteId))
+      if (bgRunIds.size > 0) {
+        // Fetch selected runs to get their testCaseIds, then filter bugs by those IDs
+        const runDetails = await Promise.all(
+          Array.from(bgRunIds).map((id) =>
+            api.get(`/test-runs/${id}`).then((r) => r.data.data as { executions: { testCase: { id: string } }[] })
+          )
+        )
+        const tcIds = new Set(runDetails.flatMap((r) => r.executions.map((e) => e.testCase.id)))
+        bugs = bugs.filter((b) => b.testCase && tcIds.has(b.testCase.id ?? ''))
       }
 
       const pName = bgProject ? projectName(bgProject) : 'All Projects'
@@ -836,10 +843,9 @@ export default function ExportPage() {
 
   const tcFolders = filterSuitesByType(filterSuitesByProject(allSuites, tcProject), 'CASE_FOLDER')
   const stFolders = filterSuitesByType(filterSuitesByProject(allSuites, stProject), 'RUN_FOLDER')
-  const bgFolders = filterSuitesByType(filterSuitesByProject(allSuites, bgProject), 'CASE_FOLDER')
+  const bgFolders = filterSuitesByType(filterSuitesByProject(allSuites, bgProject), 'RUN_FOLDER')
 
   const flatTcFolders = flattenSuiteTree(tcFolders)
-  const flatBgFolders = flattenSuiteTree(bgFolders)
 
   return (
     <div className="space-y-6">
@@ -930,25 +936,31 @@ export default function ExportPage() {
       {/* ── Bugs ───────────────────────────────────────────────────── */}
       <Section icon={<Bug className="h-4 w-4" />} title="Bugs">
         <div className="flex flex-wrap gap-3 items-end">
-          <ProjectSelect value={bgProject} onChange={(v) => { setBgProject(v); setBgSuites(new Set()) }} projects={projects} />
+          <ProjectSelect value={bgProject} onChange={(v) => { setBgProject(v); setBgRunIds(new Set()) }} projects={projects} />
           <div className="space-y-1">
             <label className="text-xs text-muted-foreground">Format</label>
             <FormatToggle value={bgFormat} onChange={setBgFormat} />
           </div>
         </div>
 
-        {flatBgFolders.length > 0 && (
+        {bgFolders.length > 0 && (
           <div>
             <p className="text-xs text-muted-foreground mb-2">
-              Filter by folder
-              {bgSuites.size > 0 && <span className="ml-2 font-medium text-foreground">({bgSuites.size} selected)</span>}
-              {bgSuites.size > 0 && (
-                <button onClick={() => setBgSuites(new Set())} className="ml-2 text-xs underline text-muted-foreground">clear</button>
+              Expand folder to select test suites
+              {bgRunIds.size > 0 && <span className="ml-2 font-medium text-foreground">· {bgRunIds.size} suite{bgRunIds.size > 1 ? 's' : ''} selected</span>}
+              {bgRunIds.size > 0 && (
+                <button onClick={() => setBgRunIds(new Set())} className="ml-2 text-xs underline text-muted-foreground">clear</button>
               )}
             </p>
-            <div className="bg-background border rounded-md p-3 max-h-48 overflow-y-auto">
+            <div className="bg-background border rounded-md p-3 max-h-56 overflow-y-auto space-y-0.5">
               {bgFolders.map((s) => (
-                <SuiteNode key={s.id} suite={s} selected={bgSuites} onToggle={(id) => setBgSuites(toggleSuite(bgSuites, id))} />
+                <SuiteRunPickerNode
+                  key={s.id}
+                  suite={s}
+                  runs={bgProject ? allRuns.filter((r) => r.projectId === bgProject) : allRuns}
+                  selected={bgRunIds}
+                  onToggle={(id) => setBgRunIds(toggleSuite(bgRunIds, id))}
+                />
               ))}
             </div>
           </div>
@@ -961,7 +973,7 @@ export default function ExportPage() {
         >
           {bgLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
           Export Bugs
-          {bgSuites.size > 0 ? ` (${bgSuites.size} folder${bgSuites.size > 1 ? 's' : ''})` : bgProject ? ` — ${projectName(bgProject)}` : ' — All'}
+          {bgRunIds.size > 0 ? ` (${bgRunIds.size} suite${bgRunIds.size > 1 ? 's' : ''})` : bgProject ? ` — ${projectName(bgProject)}` : ' — All'}
         </button>
       </Section>
     </div>
