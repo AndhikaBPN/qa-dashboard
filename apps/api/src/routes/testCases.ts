@@ -185,11 +185,12 @@ export const testCaseRoutes: FastifyPluginAsync = async (fastify) => {
       try {
         let steps: unknown
         const stepsRaw = row['Steps'] ?? ''
+        const testDataRaw = row['Test Data'] ?? row['TestData'] ?? ''
         try {
           steps = JSON.parse(stepsRaw)
         } catch {
           steps = stepsRaw
-            ? [{ order: 1, action: stepsRaw, testData: '', expectedStepResult: '' }]
+            ? [{ order: 1, action: stepsRaw, testData: testDataRaw, expectedStepResult: '' }]
             : [{ order: 1, action: '-', testData: '', expectedStepResult: '' }]
         }
 

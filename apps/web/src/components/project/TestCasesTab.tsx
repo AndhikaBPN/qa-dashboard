@@ -591,7 +591,7 @@ function ImportModal({ projectId, suites, onClose }: {
 
   function downloadTemplate() {
     const template = [
-      { Title: 'Example test case', Priority: 'MEDIUM', Type: 'FUNCTIONAL', 'Scenario Type': 'POSITIVE', Precondition: '', Steps: '', 'Expected Result': 'System behaves correctly', 'Jira Issue Key': '' },
+      { Title: 'Example test case', Priority: 'MEDIUM', Type: 'FUNCTIONAL', Precondition: '', Steps: 'Click the button', 'Test Data': '', 'Expected Result': 'System behaves correctly', 'Scenario Type': 'POSITIVE', 'Jira Issue Key': '' },
     ]
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(template), 'Test Cases')
