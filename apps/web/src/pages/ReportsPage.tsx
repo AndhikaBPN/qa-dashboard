@@ -95,10 +95,8 @@ export default function ReportsPage() {
     queryFn: () => api.get(`/reports/project-stats?${qs}`).then((r) => r.data.data),
   })
 
-  // Trend needs a period hint for grouping granularity; single/range → weekly grouping
-  const trendQs = buildParams(filterMode, period, projectFilter, singleDate, from, to,
-    filterMode !== 'preset' ? { period: 'month' } : undefined,
-  )
+  // preset mode sends period param; single/range sends only from/to → API falls to weekly-bucket else branch
+  const trendQs = buildParams(filterMode, period, projectFilter, singleDate, from, to)
 
   const { data: trendData, isLoading: trendLoading } = useQuery({
     queryKey: ['report-trend', trendQs],
