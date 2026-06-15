@@ -52,7 +52,7 @@ export const testCaseRoutes: FastifyPluginAsync = async (fastify) => {
           executions: {
             orderBy: { executedAt: 'desc' },
             take: 1,
-            select: { status: true, executedAt: true },
+            select: { status: true, actualResult: true, executedAt: true },
           },
         },
       }),
