@@ -176,6 +176,43 @@ export const reportRoutes: FastifyPluginAsync = async (fastify) => {
 
     const now = new Date()
 
+    if (from || to) {
+      // date range / single date — skip period check entirely, fall to weekly bucketing below
+      const rangeFrom = from ? new Date(from) : (() => { const d = new Date(now); d.setDate(d.getDate() - 27); return d })()
+      const rangeTo = to ? new Date(to + 'T23:59:59.999Z') : now
+      const diffDays = Math.ceil((rangeTo.getTime() - rangeFrom.getTime()) / (1000 * 60 * 60 * 24))
+      const numWeeks = Math.max(1, Math.ceil(diffDays / 7))
+
+      for (let i = 0; i < numWeeks; i++) {
+        const start = new Date(rangeFrom)
+        start.setDate(start.getDate() + i * 7)
+        start.setHours(0, 0, 0, 0)
+        const end = new Date(start)
+        end.setDate(end.getDate() + 6)
+        end.setHours(23, 59, 59, 999)
+        if (end > rangeTo) end.setTime(rangeTo.getTime())
+
+        const execs = await prisma.execution.groupBy({
+          by: ['status'],
+          where: { ...projectCondition, executedAt: { gte: start, lte: end }, status: { not: 'NOT_RUN' } },
+          _count: { status: true },
+        })
+
+        const map: Record<string, number> = {}
+        execs.forEach((e) => { map[e.status] = e._count.status })
+
+        points.push({
+          label: `${start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${end.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`,
+          pass: map['PASS'] ?? 0,
+          fail: map['FAIL'] ?? 0,
+          blocked: map['BLOCKED'] ?? 0,
+          total: Object.values(map).reduce((a, b) => a + b, 0),
+        })
+      }
+
+      return ok(reply, points)
+    }
+
     if (period === 'week') {
       // Daily for last 7 days
       for (let i = 6; i >= 0; i--) {
@@ -247,39 +284,6 @@ export const reportRoutes: FastifyPluginAsync = async (fastify) => {
 
         points.push({
           label: start.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }),
-          pass: map['PASS'] ?? 0,
-          fail: map['FAIL'] ?? 0,
-          blocked: map['BLOCKED'] ?? 0,
-          total: Object.values(map).reduce((a, b) => a + b, 0),
-        })
-      }
-    } else {
-      // custom from/to — weekly grouping
-      const rangeFrom = from ? new Date(from) : (() => { const d = new Date(now); d.setDate(d.getDate() - 27); return d })()
-      const rangeTo = to ? new Date(to + 'T23:59:59.999Z') : now
-      const diffDays = Math.ceil((rangeTo.getTime() - rangeFrom.getTime()) / (1000 * 60 * 60 * 24))
-      const numWeeks = Math.max(1, Math.ceil(diffDays / 7))
-
-      for (let i = 0; i < numWeeks; i++) {
-        const start = new Date(rangeFrom)
-        start.setDate(start.getDate() + i * 7)
-        start.setHours(0, 0, 0, 0)
-        const end = new Date(start)
-        end.setDate(end.getDate() + 6)
-        end.setHours(23, 59, 59, 999)
-        if (end > rangeTo) end.setTime(rangeTo.getTime())
-
-        const execs = await prisma.execution.groupBy({
-          by: ['status'],
-          where: { ...projectCondition, executedAt: { gte: start, lte: end }, status: { not: 'NOT_RUN' } },
-          _count: { status: true },
-        })
-
-        const map: Record<string, number> = {}
-        execs.forEach((e) => { map[e.status] = e._count.status })
-
-        points.push({
-          label: `${start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${end.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`,
           pass: map['PASS'] ?? 0,
           fail: map['FAIL'] ?? 0,
           blocked: map['BLOCKED'] ?? 0,
