@@ -491,7 +491,7 @@ export const reportRoutes: FastifyPluginAsync = async (fastify) => {
         where: { ...pf, createdAt: { gte: rangeStart, lte: rangeEnd } },
         select: { reporterId: true, createdAt: true },
       }),
-      prisma.user.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } }),
+      prisma.user.findMany({ where: { role: 'QA' }, select: { id: true, name: true }, orderBy: { name: 'asc' } }),
     ])
 
     function bucketIndex(date: Date): number {
