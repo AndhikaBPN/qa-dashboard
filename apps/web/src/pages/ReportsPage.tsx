@@ -114,7 +114,7 @@ export default function ReportsPage() {
   })
 
   const [activityWeeks, setActivityWeeks] = useState(4)
-  const [showNonEmpty, setShowNonEmpty] = useState(true)
+  const [showNonEmpty, setShowNonEmpty] = useState(false)
 
   const activityQs = buildParams(filterMode, period, projectFilter, singleDate, from, to, { weeks: String(activityWeeks) })
 
