@@ -19,7 +19,7 @@ type BugsBySuiteData = {
 
 type ActivityWeek = { created: number; updated: number; executed: number; defects: number }
 type ActivityUser = {
-  userId: string; userName: string
+  userId: string; userName: string; role: string
   weeks: ActivityWeek[]
   totals: ActivityWeek
 }
@@ -427,11 +427,12 @@ export default function ReportsPage() {
             <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
           </div>
         ) : activityData ? (() => {
+          const qaUsers = activityData.users.filter((u) => u.role === 'QA')
           const visibleUsers = showNonEmpty
-            ? activityData.users.filter((u) =>
+            ? qaUsers.filter((u) =>
                 u.totals.created + u.totals.updated + u.totals.executed + u.totals.defects > 0
               )
-            : activityData.users
+            : qaUsers
 
           const SUBCOLS = [
             { key: 'created' as const,  label: 'Case\ncreated'  },

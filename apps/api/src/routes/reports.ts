@@ -491,7 +491,7 @@ export const reportRoutes: FastifyPluginAsync = async (fastify) => {
         where: { ...pf, createdAt: { gte: rangeStart, lte: rangeEnd } },
         select: { reporterId: true, createdAt: true },
       }),
-      prisma.user.findMany({ where: { role: 'QA' }, select: { id: true, name: true }, orderBy: { name: 'asc' } }),
+      prisma.user.findMany({ where: { role: 'QA' }, select: { id: true, name: true, role: true }, orderBy: { name: 'asc' } }),
     ])
 
     function bucketIndex(date: Date): number {
@@ -502,9 +502,9 @@ export const reportRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     type Week = { created: number; updated: number; executed: number; defects: number }
-    const userMap = new Map<string, { name: string; weeks: Week[] }>()
+    const userMap = new Map<string, { name: string; role: string; weeks: Week[] }>()
     for (const u of users) {
-      userMap.set(u.id, { name: u.name, weeks: buckets.map(() => ({ created: 0, updated: 0, executed: 0, defects: 0 })) })
+      userMap.set(u.id, { name: u.name, role: u.role, weeks: buckets.map(() => ({ created: 0, updated: 0, executed: 0, defects: 0 })) })
     }
 
     for (const tc of tcCreated) {
@@ -530,7 +530,7 @@ export const reportRoutes: FastifyPluginAsync = async (fastify) => {
         (acc, w) => ({ created: acc.created + w.created, updated: acc.updated + w.updated, executed: acc.executed + w.executed, defects: acc.defects + w.defects }),
         { created: 0, updated: 0, executed: 0, defects: 0 }
       )
-      return { userId, userName: u.name, weeks: u.weeks, totals }
+      return { userId, userName: u.name, role: u.role, weeks: u.weeks, totals }
     })
 
     const weekTotals = buckets.map((_, i) =>
