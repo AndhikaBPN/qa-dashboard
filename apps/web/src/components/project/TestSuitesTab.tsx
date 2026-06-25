@@ -633,7 +633,7 @@ function SuiteDetailPanel({
   return (
     <div className="fixed inset-0 z-40 flex">
       <div className="flex-1 bg-black/30" onClick={onClose} />
-      <div className="w-full max-w-2xl bg-background border-l shadow-xl flex flex-col">
+      <div className="w-full max-w-4xl bg-background border-l shadow-xl flex flex-col">
         <div className="flex items-center justify-between px-5 py-4 border-b">
           <div>
             <h2 className="text-sm font-semibold">{runData?.name}</h2>
@@ -720,8 +720,8 @@ function SuiteDetailPanel({
                           }
                         </td>
                         <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground">{exec.testCase.tcId}</td>
-                        <td className="px-4 py-2.5 max-w-xs">
-                          <span className="line-clamp-1">{exec.testCase.title}</span>
+                        <td className="px-4 py-2.5 min-w-0">
+                          <span className="line-clamp-2 leading-snug text-sm" title={exec.testCase.title}>{exec.testCase.title}</span>
                         </td>
                         <td className="px-4 py-2.5 text-xs">{exec.testCase.priority}</td>
                         <td className="px-4 py-2.5" onClick={(e) => e.stopPropagation()}>
