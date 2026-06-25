@@ -817,6 +817,8 @@ export default function TestCasesTab({ projectId }: { projectId: string }) {
   })
   const [importOpen, setImportOpen] = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
+  const [selectedTcIds, setSelectedTcIds] = useState<Set<string>>(new Set())
+  const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false)
 
   // Filters
   const [search, setSearch] = useState('')
@@ -855,6 +857,15 @@ export default function TestCasesTab({ projectId }: { projectId: string }) {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['test-cases'] }); setDeleteConfirm(null) },
   })
 
+  const bulkDeleteMut = useMutation({
+    mutationFn: (ids: string[]) => api.post('/test-cases/bulk', { ids, action: 'delete' }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['test-cases'] })
+      setSelectedTcIds(new Set())
+      setBulkDeleteConfirm(false)
+    },
+  })
+
   const deleteSuiteMut = useMutation({
     mutationFn: (id: string) => api.delete(`/suites/${id}`),
     onSuccess: () => {
@@ -865,6 +876,20 @@ export default function TestCasesTab({ projectId }: { projectId: string }) {
 
   const testCases: TestCase[] = tcData?.data ?? []
   const hasFilters = search || filterPriority || filterType || filterScenario
+  const allSelected = testCases.length > 0 && testCases.every((tc) => selectedTcIds.has(tc.id))
+
+  function toggleTc(id: string) {
+    setSelectedTcIds((prev) => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+
+  function toggleAll() {
+    if (allSelected) setSelectedTcIds(new Set())
+    else setSelectedTcIds(new Set(testCases.map((tc) => tc.id)))
+  }
 
   function clearFilters() {
     setSearch('')
@@ -983,6 +1008,14 @@ export default function TestCasesTab({ projectId }: { projectId: string }) {
           )}
 
           <div className="flex-1" />
+          {!isViewer && selectedTcIds.size > 0 && (
+            <button
+              onClick={() => setBulkDeleteConfirm(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-destructive text-destructive-foreground rounded-md hover:bg-destructive/90"
+            >
+              <Trash2 className="h-3.5 w-3.5" /> Delete ({selectedTcIds.size})
+            </button>
+          )}
           {!isViewer && (
             <button
               onClick={() => setImportOpen(true)}
@@ -1013,6 +1046,16 @@ export default function TestCasesTab({ projectId }: { projectId: string }) {
             <table className="w-full text-sm">
               <thead className="bg-muted/40 sticky top-0">
                 <tr>
+                  {!isViewer && (
+                    <th className="px-3 py-2.5 w-8">
+                      <input
+                        type="checkbox"
+                        checked={allSelected}
+                        onChange={toggleAll}
+                        className="cursor-pointer"
+                      />
+                    </th>
+                  )}
                   {['ID', 'Title', 'Folder', 'Priority', 'Type', 'Scenario', ''].map((h) => (
                     <th key={h} className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">
                       {h}
@@ -1024,8 +1067,18 @@ export default function TestCasesTab({ projectId }: { projectId: string }) {
                 {testCases.map((tc) => (
                   <tr
                     key={tc.id}
-                    className="border-t hover:bg-muted/20 group"
+                    className={`border-t hover:bg-muted/20 group ${selectedTcIds.has(tc.id) ? 'bg-primary/5' : ''}`}
                   >
+                    {!isViewer && (
+                      <td className="px-3 py-2.5 w-8" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={selectedTcIds.has(tc.id)}
+                          onChange={() => toggleTc(tc.id)}
+                          className="cursor-pointer"
+                        />
+                      </td>
+                    )}
                     <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground">{tc.tcId}</td>
                     <td className="px-4 py-2.5 font-medium max-w-xs">
                       <span className="line-clamp-1">{tc.title}</span>
@@ -1113,6 +1166,32 @@ export default function TestCasesTab({ projectId }: { projectId: string }) {
               <button
                 onClick={() => deleteMut.mutate(deleteConfirm)}
                 disabled={deleteMut.isPending}
+                className="px-3 py-1.5 text-sm bg-destructive text-destructive-foreground rounded-md hover:bg-destructive/90 disabled:opacity-50"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Delete Confirm */}
+      {bulkDeleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-background border rounded-lg shadow-lg p-5 w-80">
+            <p className="text-sm mb-4">
+              Delete <span className="font-semibold">{selectedTcIds.size}</span> test case{selectedTcIds.size > 1 ? 's' : ''}? This cannot be undone.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setBulkDeleteConfirm(false)}
+                className="px-3 py-1.5 text-sm border rounded-md hover:bg-muted"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => bulkDeleteMut.mutate(Array.from(selectedTcIds))}
+                disabled={bulkDeleteMut.isPending}
                 className="px-3 py-1.5 text-sm bg-destructive text-destructive-foreground rounded-md hover:bg-destructive/90 disabled:opacity-50"
               >
                 Delete
