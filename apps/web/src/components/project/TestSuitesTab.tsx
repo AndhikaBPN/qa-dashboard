@@ -537,9 +537,9 @@ function ExpandedRow({
                   <textarea
                     value={actualResult}
                     onChange={(e) => setActualResult(e.target.value)}
-                    rows={2}
+                    rows={3}
                     placeholder="Enter actual result…"
-                    className="flex-1 border rounded-md px-3 py-2 text-sm bg-background focus:outline-none focus:ring-1 focus:ring-primary resize-none"
+                    className="flex-1 border rounded-md px-3 py-2 text-sm bg-background focus:outline-none focus:ring-1 focus:ring-primary resize-y min-h-[72px] max-h-[240px]"
                   />
                   <button
                     onClick={() => saveActualMut.mutate()}
@@ -633,7 +633,7 @@ function SuiteDetailPanel({
   return (
     <div className="fixed inset-0 z-40 flex">
       <div className="flex-1 bg-black/30" onClick={onClose} />
-      <div className="w-[800px] shrink-0 bg-background border-l shadow-xl flex flex-col">
+      <div className="w-[1450px] shrink-0 bg-background border-l shadow-xl flex flex-col">
         <div className="flex items-center justify-between px-5 py-4 border-b">
           <div>
             <h2 className="text-sm font-semibold">{runData?.name}</h2>
