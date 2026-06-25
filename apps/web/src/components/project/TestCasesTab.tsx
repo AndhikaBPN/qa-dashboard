@@ -842,7 +842,7 @@ export default function TestCasesTab({ projectId }: { projectId: string }) {
     queryFn: () => api.get('/suites', { params: { projectId, type: 'CASE_FOLDER' } }).then((r) => r.data.data),
   })
 
-  const suites: Suite[] = suitesData ? buildTree(suitesData) : []
+  const suites: Suite[] = suitesData ?? []
 
   const { data: tcData, isLoading: tcLoading } = useQuery({
     queryKey: ['test-cases', projectId, selectedSuiteId, search, filterPriority, filterType, filterScenario],
