@@ -77,4 +77,19 @@ export const executionRoutes: FastifyPluginAsync = async (fastify) => {
     })
     return ok(reply, { updated: result.count })
   })
+
+  fastify.delete('/:id', auth, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const existing = await prisma.execution.findUnique({ where: { id } })
+    if (!existing) return notFound(reply)
+    await prisma.execution.delete({ where: { id } })
+    return reply.code(204).send()
+  })
+
+  fastify.post('/bulk-delete', auth, async (request, reply) => {
+    const { ids } = request.body as { ids: string[] }
+    if (!Array.isArray(ids) || ids.length === 0) return badRequest(reply, 'ids required')
+    await prisma.execution.deleteMany({ where: { id: { in: ids } } })
+    return reply.code(204).send()
+  })
 }

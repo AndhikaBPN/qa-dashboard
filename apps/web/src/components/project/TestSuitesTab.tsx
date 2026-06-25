@@ -590,6 +590,9 @@ function SuiteDetailPanel({
   })
 
   const [expandedExecId, setExpandedExecId] = useState<string | null>(null)
+  const [selectedExecIds, setSelectedExecIds] = useState<Set<string>>(new Set())
+  const [bulkRemoveConfirm, setBulkRemoveConfirm] = useState(false)
+  const isViewer = useIsViewer()
 
   const updateStatusMut = useMutation({
     mutationFn: ({ execId, status }: { execId: string; status: string }) =>
@@ -600,8 +603,32 @@ function SuiteDetailPanel({
     },
   })
 
+  const bulkRemoveMut = useMutation({
+    mutationFn: (ids: string[]) => api.post('/executions/bulk-delete', { ids }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['test-run', runId] })
+      qc.invalidateQueries({ queryKey: ['test-run-progress', runId] })
+      setSelectedExecIds(new Set())
+      setBulkRemoveConfirm(false)
+    },
+  })
+
   const executions: Execution[] = runData?.executions ?? []
   const progress = progressData ?? { total: 0, pass: 0, fail: 0, blocked: 0, skip: 0, notRun: 0, passRate: 0 }
+  const allExecsSelected = executions.length > 0 && executions.every((e) => selectedExecIds.has(e.id))
+
+  function toggleExec(id: string) {
+    setSelectedExecIds((prev) => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+
+  function toggleAllExecs() {
+    if (allExecsSelected) setSelectedExecIds(new Set())
+    else setSelectedExecIds(new Set(executions.map((e) => e.id)))
+  }
 
   return (
     <div className="fixed inset-0 z-40 flex">
@@ -654,6 +681,11 @@ function SuiteDetailPanel({
             <table className="w-full text-sm">
               <thead className="bg-muted/40 sticky top-0">
                 <tr>
+                  {!isViewer && (
+                    <th className="px-3 py-2.5 w-8">
+                      <input type="checkbox" checked={allExecsSelected} onChange={toggleAllExecs} className="cursor-pointer" />
+                    </th>
+                  )}
                   {['', 'ID', 'Title', 'Priority', 'Status', ''].map((h, i) => (
                     <th key={i} className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">{h}</th>
                   ))}
@@ -667,10 +699,20 @@ function SuiteDetailPanel({
                       <tr
                         key={exec.id}
                         className={`border-t group cursor-pointer transition-colors ${
-                          isExpanded ? 'bg-muted/30' : 'hover:bg-muted/20'
+                          selectedExecIds.has(exec.id) ? 'bg-primary/5' : isExpanded ? 'bg-muted/30' : 'hover:bg-muted/20'
                         }`}
                         onClick={() => setExpandedExecId(isExpanded ? null : exec.id)}
                       >
+                        {!isViewer && (
+                          <td className="px-3 py-2.5 w-8" onClick={(e) => e.stopPropagation()}>
+                            <input
+                              type="checkbox"
+                              checked={selectedExecIds.has(exec.id)}
+                              onChange={() => toggleExec(exec.id)}
+                              className="cursor-pointer"
+                            />
+                          </td>
+                        )}
                         <td className="px-3 py-2.5 w-6">
                           {isExpanded
                             ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
@@ -713,7 +755,7 @@ function SuiteDetailPanel({
                         <ExpandedRow
                           key={`expanded-${exec.id}`}
                           exec={exec}
-                          colSpan={6}
+                          colSpan={!isViewer ? 7 : 6}
                           onClose={() => setExpandedExecId(null)}
                         />
                       )}
@@ -726,6 +768,14 @@ function SuiteDetailPanel({
         </div>
 
         <div className="px-5 py-3 border-t flex items-center gap-2">
+          {!isViewer && selectedExecIds.size > 0 && (
+            <button
+              onClick={() => setBulkRemoveConfirm(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-destructive text-destructive-foreground rounded-md hover:bg-destructive/90"
+            >
+              <Trash2 className="h-3.5 w-3.5" /> Remove ({selectedExecIds.size})
+            </button>
+          )}
           {!runData?.completedAt && (
             <button
               onClick={() =>
@@ -741,6 +791,28 @@ function SuiteDetailPanel({
           )}
         </div>
       </div>
+
+      {bulkRemoveConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-background border rounded-lg shadow-lg p-5 w-80">
+            <p className="text-sm mb-4">
+              Remove <span className="font-semibold">{selectedExecIds.size}</span> test case{selectedExecIds.size > 1 ? 's' : ''} from this suite? This cannot be undone.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setBulkRemoveConfirm(false)} className="px-3 py-1.5 text-sm border rounded-md hover:bg-muted">
+                Cancel
+              </button>
+              <button
+                onClick={() => bulkRemoveMut.mutate(Array.from(selectedExecIds))}
+                disabled={bulkRemoveMut.isPending}
+                className="px-3 py-1.5 text-sm bg-destructive text-destructive-foreground rounded-md hover:bg-destructive/90 disabled:opacity-50"
+              >
+                Remove
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
