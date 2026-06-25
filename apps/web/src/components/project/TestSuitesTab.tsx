@@ -72,16 +72,6 @@ const STATUS_COLORS: Record<string, string> = {
 
 // ─── Tree helpers ─────────────────────────────────────────────────────────────
 
-function buildTree(suites: any[]): Suite[] {
-  const map = new Map(suites.map((s) => [s.id, { ...s, children: [] as Suite[] }]))
-  const roots: Suite[] = []
-  for (const node of map.values()) {
-    if (node.parentId) (map.get(node.parentId) as any)?.children.push(node)
-    else roots.push(node as Suite)
-  }
-  return roots.sort((a, b) => a.orderIndex - b.orderIndex)
-}
-
 function flattenSuites(suites: Suite[], depth = 0): { id: string; label: string }[] {
   return suites.flatMap((s) => [
     { id: s.id, label: `${'— '.repeat(depth)}${s.name}` },

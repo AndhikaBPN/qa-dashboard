@@ -51,18 +51,6 @@ const PRIORITY_COLORS: Record<string, string> = {
   LOWEST: 'bg-muted text-muted-foreground',
 }
 
-// ─── Tree builder ─────────────────────────────────────────────────────────────
-
-function buildTree(suites: any[]): Suite[] {
-  const map = new Map(suites.map((s) => [s.id, { ...s, children: [] as Suite[] }]))
-  const roots: Suite[] = []
-  for (const node of map.values()) {
-    if (node.parentId) (map.get(node.parentId) as any)?.children.push(node)
-    else roots.push(node as Suite)
-  }
-  return roots.sort((a, b) => a.orderIndex - b.orderIndex)
-}
-
 // ─── Folder Node ──────────────────────────────────────────────────────────────
 
 function FolderNode({
