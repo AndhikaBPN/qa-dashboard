@@ -250,7 +250,7 @@ function CreateRunModal({
     queryFn: () =>
       api.get('/suites', { params: { projectId, type: 'CASE_FOLDER' } }).then((r) => r.data.data as any[]),
   })
-  const caseFolders: Suite[] = caseFoldersData ? buildTree(caseFoldersData) : []
+  const caseFolders: Suite[] = caseFoldersData ?? []
 
   const { data: tcData } = useQuery({
     queryKey: ['test-cases-picker', projectId, tcFolderFilter],
@@ -776,7 +776,7 @@ export default function TestSuitesTab({ projectId }: { projectId: string }) {
     queryKey: ['suites', projectId, 'RUN_FOLDER'],
     queryFn: () => api.get('/suites', { params: { projectId, type: 'RUN_FOLDER' } }).then((r) => r.data.data),
   })
-  const suites: Suite[] = suitesData ? buildTree(suitesData) : []
+  const suites: Suite[] = suitesData ?? []
 
   const deleteSuiteMut = useMutation({
     mutationFn: (id: string) => api.delete(`/suites/${id}`),
