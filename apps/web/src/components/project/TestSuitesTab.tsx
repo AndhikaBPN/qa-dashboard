@@ -633,7 +633,7 @@ function SuiteDetailPanel({
   return (
     <div className="fixed inset-0 z-40 flex">
       <div className="flex-1 bg-black/30" onClick={onClose} />
-      <div className="w-full max-w-4xl bg-background border-l shadow-xl flex flex-col">
+      <div className="w-[600px] shrink-0 bg-background border-l shadow-xl flex flex-col">
         <div className="flex items-center justify-between px-5 py-4 border-b">
           <div>
             <h2 className="text-sm font-semibold">{runData?.name}</h2>
