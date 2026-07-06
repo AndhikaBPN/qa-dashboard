@@ -592,6 +592,8 @@ function SuiteDetailPanel({
   const [expandedExecId, setExpandedExecId] = useState<string | null>(null)
   const [selectedExecIds, setSelectedExecIds] = useState<Set<string>>(new Set())
   const [bulkRemoveConfirm, setBulkRemoveConfirm] = useState(false)
+  const [bulkStatusValue, setBulkStatusValue] = useState('')
+  const [bulkStatusConfirm, setBulkStatusConfirm] = useState(false)
   const isViewer = useIsViewer()
 
   const updateStatusMut = useMutation({
@@ -610,6 +612,18 @@ function SuiteDetailPanel({
       qc.invalidateQueries({ queryKey: ['test-run-progress', runId] })
       setSelectedExecIds(new Set())
       setBulkRemoveConfirm(false)
+    },
+  })
+
+  const bulkStatusMut = useMutation({
+    mutationFn: ({ ids, status }: { ids: string[]; status: string }) =>
+      api.post('/executions/bulk-update', { ids, status }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['test-run', runId] })
+      qc.invalidateQueries({ queryKey: ['test-run-progress', runId] })
+      setSelectedExecIds(new Set())
+      setBulkStatusConfirm(false)
+      setBulkStatusValue('')
     },
   })
 
@@ -769,12 +783,32 @@ function SuiteDetailPanel({
 
         <div className="px-5 py-3 border-t flex items-center gap-2">
           {!isViewer && selectedExecIds.size > 0 && (
-            <button
-              onClick={() => setBulkRemoveConfirm(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-destructive text-destructive-foreground rounded-md hover:bg-destructive/90"
-            >
-              <Trash2 className="h-3.5 w-3.5" /> Remove ({selectedExecIds.size})
-            </button>
+            <>
+              <button
+                onClick={() => setBulkRemoveConfirm(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-destructive text-destructive-foreground rounded-md hover:bg-destructive/90"
+              >
+                <Trash2 className="h-3.5 w-3.5" /> Remove ({selectedExecIds.size})
+              </button>
+              <div className="flex items-center gap-1.5">
+                <select
+                  value={bulkStatusValue}
+                  onChange={(e) => setBulkStatusValue(e.target.value)}
+                  className="border rounded-md px-2 py-1.5 text-sm bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                >
+                  <option value="">Set Status…</option>
+                  {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
+                {bulkStatusValue && (
+                  <button
+                    onClick={() => setBulkStatusConfirm(true)}
+                    className="px-3 py-1.5 text-sm border border-primary text-primary rounded-md hover:bg-primary/10"
+                  >
+                    Apply ({selectedExecIds.size})
+                  </button>
+                )}
+              </div>
+            </>
           )}
           {!runData?.completedAt && (
             <button
@@ -808,6 +842,29 @@ function SuiteDetailPanel({
                 className="px-3 py-1.5 text-sm bg-destructive text-destructive-foreground rounded-md hover:bg-destructive/90 disabled:opacity-50"
               >
                 Remove
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {bulkStatusConfirm && bulkStatusValue && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-background border rounded-lg shadow-lg p-5 w-80">
+            <p className="text-sm mb-4">
+              Set status <span className="font-semibold">{bulkStatusValue}</span> for{' '}
+              <span className="font-semibold">{selectedExecIds.size}</span> test case{selectedExecIds.size > 1 ? 's' : ''}?
+            </p>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setBulkStatusConfirm(false)} className="px-3 py-1.5 text-sm border rounded-md hover:bg-muted">
+                Cancel
+              </button>
+              <button
+                onClick={() => bulkStatusMut.mutate({ ids: Array.from(selectedExecIds), status: bulkStatusValue })}
+                disabled={bulkStatusMut.isPending}
+                className="px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50"
+              >
+                Apply
               </button>
             </div>
           </div>
