@@ -1,4 +1,5 @@
 import type { FastifyPluginAsync } from 'fastify'
+import { randomBytes } from 'crypto'
 import { prisma } from '../lib/prisma.js'
 import { ok, created, noContent, badRequest, notFound, conflict } from '../lib/response.js'
 import { TestRunCreateSchema } from '../types/schemas.js'
@@ -144,6 +145,32 @@ export const testRunRoutes: FastifyPluginAsync = async (fastify) => {
       prisma.execution.deleteMany({ where: { testRunId: id } }),
       prisma.testRun.delete({ where: { id } }),
     ])
+    return noContent(reply)
+  })
+
+  // Share: generate token
+  fastify.post('/:id/share', auth, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const run = await prisma.testRun.findUnique({ where: { id } })
+    if (!run) return notFound(reply)
+
+    // Reuse existing token if already shared
+    const token = run.shareToken ?? randomBytes(16).toString('hex')
+    const updated = await prisma.testRun.update({
+      where: { id },
+      data: { shareToken: token },
+      select: { id: true, shareToken: true },
+    })
+    return ok(reply, { shareToken: updated.shareToken })
+  })
+
+  // Share: revoke token
+  fastify.delete('/:id/share', auth, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const run = await prisma.testRun.findUnique({ where: { id } })
+    if (!run) return notFound(reply)
+
+    await prisma.testRun.update({ where: { id }, data: { shareToken: null } })
     return noContent(reply)
   })
 }
