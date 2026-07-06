@@ -3,7 +3,13 @@ import { useIsViewer } from '@/stores/authStore'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import {
-  Plus, Trash2, X, Search, CheckCircle2, XCircle, MinusCircle, AlertTriangle, Circle,
+  EXECUTION_STATUS_OPTIONS,
+  getExecutionProgressItems,
+  getExecutionStatusMeta,
+} from '@/lib/executionStatus'
+import {
+  Plus, Trash2, X,
+  Search,
   Bug, ChevronRight, ChevronDown, Folder, FolderOpen, Pencil, Save, Share2, Copy, Check, Link2Off,
 } from 'lucide-react'
 import BugFormModal from '@/components/bug/BugFormModal'
@@ -52,24 +58,6 @@ interface ProjectTestCase {
 interface User { id: string; name: string; email: string; role: string }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-
-const STATUS_ICONS: Record<string, React.ReactNode> = {
-  PASS: <CheckCircle2 className="h-4 w-4 text-green-600" />,
-  FAIL: <XCircle className="h-4 w-4 text-red-600" />,
-  BLOCKED: <AlertTriangle className="h-4 w-4 text-orange-500" />,
-  SKIP: <MinusCircle className="h-4 w-4 text-muted-foreground" />,
-  NOT_RUN: <Circle className="h-4 w-4 text-muted-foreground" />,
-}
-
-const STATUS_OPTIONS = ['NOT_RUN', 'PASS', 'FAIL', 'BLOCKED', 'SKIP']
-
-const STATUS_COLORS: Record<string, string> = {
-  PASS: 'bg-green-900/60 text-green-300',
-  FAIL: 'bg-red-900/60 text-red-300',
-  BLOCKED: 'bg-orange-900/60 text-orange-300',
-  SKIP: 'bg-muted text-muted-foreground',
-  NOT_RUN: 'bg-muted text-muted-foreground',
-}
 
 // ─── Tree helpers ─────────────────────────────────────────────────────────────
 
@@ -630,6 +618,8 @@ function SuiteDetailPanel({
 
   const executions: Execution[] = runData?.executions ?? []
   const progress = progressData ?? { total: 0, pass: 0, fail: 0, blocked: 0, skip: 0, notRun: 0, passRate: 0 }
+  const progressItems = getExecutionProgressItems(progress)
+  const progressSegments = progressItems.filter((item) => item.count > 0)
   const allExecsSelected = executions.length > 0 && executions.every((e) => selectedExecIds.has(e.id))
 
   function toggleExec(id: string) {
@@ -671,18 +661,21 @@ function SuiteDetailPanel({
         {progress.total > 0 && (
           <div className="px-5 py-3 border-b bg-muted/20">
             <div className="flex gap-4 text-xs mb-2">
-              <span className="text-green-600">✓ {progress.pass} Pass</span>
-              <span className="text-red-600">✗ {progress.fail} Fail</span>
-              <span className="text-orange-500">⊘ {progress.blocked} Blocked</span>
-              <span className="text-muted-foreground">— {progress.skip} Skip</span>
-              <span className="text-muted-foreground">○ {progress.notRun} Not Run</span>
+              {progressItems.map((item) => (
+                <span key={item.status} className={`flex items-center gap-1.5 ${item.summaryClass}`}>
+                  {item.icon} {item.count} {item.label}
+                </span>
+              ))}
               <span className="ml-auto font-medium">{progress.passRate}% pass rate</span>
             </div>
             <div className="h-1.5 bg-muted/40 rounded-full overflow-hidden flex">
-              {progress.pass > 0 && <div className="h-full bg-green-500 transition-all" style={{ width: `${(progress.pass / progress.total) * 100}%` }} />}
-              {progress.fail > 0 && <div className="h-full bg-red-500 transition-all" style={{ width: `${(progress.fail / progress.total) * 100}%` }} />}
-              {progress.blocked > 0 && <div className="h-full bg-orange-500 transition-all" style={{ width: `${(progress.blocked / progress.total) * 100}%` }} />}
-              {progress.skip > 0 && <div className="h-full bg-slate-400 transition-all" style={{ width: `${(progress.skip / progress.total) * 100}%` }} />}
+              {progressSegments.map((item) => (
+                <div
+                  key={item.status}
+                  className={`h-full transition-all ${item.barClass}`}
+                  style={{ width: `${item.width}%` }}
+                />
+              ))}
             </div>
           </div>
         )}
@@ -741,13 +734,13 @@ function SuiteDetailPanel({
                         <td className="px-4 py-2.5 text-xs">{exec.testCase.priority}</td>
                         <td className="px-4 py-2.5" onClick={(e) => e.stopPropagation()}>
                           <div className="flex items-center gap-1">
-                            {STATUS_ICONS[exec.status]}
+                            {getExecutionStatusMeta(exec.status).icon}
                             <select
                               value={exec.status}
                               onChange={(e) => updateStatusMut.mutate({ execId: exec.id, status: e.target.value })}
-                              className={`text-xs px-1.5 py-0.5 rounded-full border-0 font-medium focus:outline-none cursor-pointer ${STATUS_COLORS[exec.status]}`}
+                              className={`text-xs px-1.5 py-0.5 rounded-full border-0 font-medium focus:outline-none cursor-pointer ${getExecutionStatusMeta(exec.status).badgeClass}`}
                             >
-                              {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+                              {EXECUTION_STATUS_OPTIONS.map((s) => <option key={s} value={s}>{getExecutionStatusMeta(s).label}</option>)}
                             </select>
                           </div>
                         </td>
@@ -798,7 +791,7 @@ function SuiteDetailPanel({
                   className="border rounded-md px-2 py-1.5 text-sm bg-background focus:outline-none focus:ring-1 focus:ring-primary"
                 >
                   <option value="">Set Status…</option>
-                  {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+                  {EXECUTION_STATUS_OPTIONS.map((s) => <option key={s} value={s}>{getExecutionStatusMeta(s).label}</option>)}
                 </select>
                 {bulkStatusValue && (
                   <button

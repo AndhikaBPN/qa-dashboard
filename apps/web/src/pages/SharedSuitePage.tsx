@@ -1,25 +1,8 @@
 import { useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
-import {
-  CheckCircle2, XCircle, MinusCircle, AlertTriangle, Circle, Folder,
-} from 'lucide-react'
-
-const STATUS_ICONS: Record<string, React.ReactNode> = {
-  PASS:    <CheckCircle2 className="h-4 w-4 text-green-500" />,
-  FAIL:    <XCircle className="h-4 w-4 text-red-500" />,
-  BLOCKED: <AlertTriangle className="h-4 w-4 text-orange-500" />,
-  SKIP:    <MinusCircle className="h-4 w-4 text-muted-foreground" />,
-  NOT_RUN: <Circle className="h-4 w-4 text-muted-foreground" />,
-}
-
-const STATUS_COLORS: Record<string, string> = {
-  PASS:    'bg-green-900/60 text-green-300',
-  FAIL:    'bg-red-900/60 text-red-300',
-  BLOCKED: 'bg-orange-900/60 text-orange-300',
-  SKIP:    'bg-muted text-muted-foreground',
-  NOT_RUN: 'bg-muted text-muted-foreground',
-}
+import { Folder } from 'lucide-react'
+import { getExecutionProgressItems, getExecutionStatusMeta } from '@/lib/executionStatus'
 
 interface Progress {
   total: number; pass: number; fail: number
@@ -67,6 +50,8 @@ export default function SharedSuitePage() {
   }
 
   const { progress, executions } = data
+  const progressItems = getExecutionProgressItems(progress)
+  const progressSegments = progressItems.filter((item) => item.count > 0)
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -108,29 +93,21 @@ export default function SharedSuitePage() {
         {/* Progress summary */}
         <div className="border rounded-lg p-4 bg-muted/10 space-y-3">
           <div className="flex flex-wrap gap-4 text-sm">
-            <span className="flex items-center gap-1.5 text-green-400">
-              <CheckCircle2 className="h-4 w-4" /> {progress.pass} Pass
-            </span>
-            <span className="flex items-center gap-1.5 text-red-400">
-              <XCircle className="h-4 w-4" /> {progress.fail} Fail
-            </span>
-            <span className="flex items-center gap-1.5 text-orange-400">
-              <AlertTriangle className="h-4 w-4" /> {progress.blocked} Blocked
-            </span>
-            <span className="flex items-center gap-1.5 text-muted-foreground">
-              <MinusCircle className="h-4 w-4" /> {progress.skip} Skip
-            </span>
-            <span className="flex items-center gap-1.5 text-muted-foreground">
-              <Circle className="h-4 w-4" /> {progress.notRun} Not Run
-            </span>
+            {progressItems.map((item) => (
+              <span key={item.status} className={`flex items-center gap-1.5 ${item.summaryClass}`}>
+                {item.icon} {item.count} {item.label}
+              </span>
+            ))}
             <span className="ml-auto font-semibold text-base">{progress.passRate}% pass rate</span>
           </div>
           <div className="h-2 bg-muted/40 rounded-full overflow-hidden flex">
-            {progress.pass > 0 && <div className="h-full bg-green-500 transition-all" style={{ width: `${(progress.pass / progress.total) * 100}%` }} />}
-            {progress.fail > 0 && <div className="h-full bg-red-500 transition-all" style={{ width: `${(progress.fail / progress.total) * 100}%` }} />}
-            {progress.blocked > 0 && <div className="h-full bg-orange-500 transition-all" style={{ width: `${(progress.blocked / progress.total) * 100}%` }} />}
-            {progress.skip > 0 && <div className="h-full bg-slate-400 transition-all" style={{ width: `${(progress.skip / progress.total) * 100}%` }} />}
-          </div>
+            {progressSegments.map((item) => (
+              <div
+                key={item.status}
+                className={`h-full transition-all ${item.barClass}`}
+                style={{ width: `${item.width}%` }}
+              />
+            ))}
           </div>
           <p className="text-xs text-muted-foreground">
             {progress.executed} of {progress.total} executed
@@ -151,26 +128,26 @@ export default function SharedSuitePage() {
               </tr>
             </thead>
             <tbody>
-              {executions.map((exec) => (
-                <tr key={exec.id} className="border-t hover:bg-muted/10">
-                  <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{exec.testCase.tcId}</td>
-                  <td className="px-4 py-3">
-                    <span className="line-clamp-2 leading-snug">{exec.testCase.title}</span>
-                  </td>
-                  <td className="px-4 py-3 text-xs">{exec.testCase.priority}</td>
-                  <td className="px-4 py-3 text-sm text-muted-foreground whitespace-pre-wrap">
-                    {exec.testCase.expectedResult || <span className="italic text-xs">—</span>}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-muted-foreground whitespace-pre-wrap">
-                    {exec.actualResult || <span className="italic text-xs">—</span>}
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[exec.status]}`}>
-                      {STATUS_ICONS[exec.status]} {exec.status}
-                    </span>
-                  </td>
-                </tr>
-              ))}
+                {executions.map((exec) => (
+                  <tr key={exec.id} className="border-t hover:bg-muted/10">
+                    <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{exec.testCase.tcId}</td>
+                    <td className="px-4 py-3">
+                      <span className="line-clamp-2 leading-snug">{exec.testCase.title}</span>
+                    </td>
+                    <td className="px-4 py-3 text-xs">{exec.testCase.priority}</td>
+                    <td className="px-4 py-3 text-sm text-muted-foreground whitespace-pre-wrap">
+                      {exec.testCase.expectedResult || <span className="italic text-xs">—</span>}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-muted-foreground whitespace-pre-wrap">
+                      {exec.actualResult || <span className="italic text-xs">—</span>}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${getExecutionStatusMeta(exec.status).badgeClass}`}>
+                        {getExecutionStatusMeta(exec.status).icon} {getExecutionStatusMeta(exec.status).label}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
             </tbody>
           </table>
         </div>
