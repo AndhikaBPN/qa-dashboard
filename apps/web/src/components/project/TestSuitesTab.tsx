@@ -678,11 +678,11 @@ function SuiteDetailPanel({
               <span className="text-muted-foreground">○ {progress.notRun} Not Run</span>
               <span className="ml-auto font-medium">{progress.passRate}% pass rate</span>
             </div>
-            <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-              <div
-                className="h-full bg-green-500 rounded-full transition-all"
-                style={{ width: `${progress.passRate}%` }}
-              />
+            <div className="h-1.5 bg-muted/40 rounded-full overflow-hidden flex">
+              {progress.pass > 0 && <div className="h-full bg-green-500 transition-all" style={{ width: `${(progress.pass / progress.total) * 100}%` }} />}
+              {progress.fail > 0 && <div className="h-full bg-red-500 transition-all" style={{ width: `${(progress.fail / progress.total) * 100}%` }} />}
+              {progress.blocked > 0 && <div className="h-full bg-orange-500 transition-all" style={{ width: `${(progress.blocked / progress.total) * 100}%` }} />}
+              {progress.skip > 0 && <div className="h-full bg-slate-400 transition-all" style={{ width: `${(progress.skip / progress.total) * 100}%` }} />}
             </div>
           </div>
         )}
