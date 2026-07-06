@@ -4,31 +4,23 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid,
 } from 'recharts'
 import { api } from '@/lib/api'
-import { CheckCircle2, Bug, FlaskConical, TrendingUp, AlertCircle, Circle, Loader2, Users } from 'lucide-react'
+import {
+  buildReportExportMeta,
+  exportReportsPdf,
+  exportReportsXlsx,
+  type ActivityUser,
+  type BugsBySuiteData,
+  type ProjectStat,
+  type ReportSummary,
+  type TrendPoint,
+  type UserActivityData,
+} from '@/lib/reportExport'
+import {
+  CheckCircle2, Bug, FlaskConical, TrendingUp, AlertCircle, Circle, Loader2, Users,
+  Download, FileSpreadsheet, FileText, ChevronDown,
+} from 'lucide-react'
 
 type Period = 'week' | 'month' | 'year'
-
-type BugsBySuiteRow = {
-  suiteId: string; suiteName: string
-  OPEN: number; IN_PROGRESS: number; RESOLVED: number; CLOSED: number; total: number
-}
-type BugsBySuiteData = {
-  totals: { OPEN: number; IN_PROGRESS: number; RESOLVED: number; CLOSED: number; total: number }
-  bySuite: BugsBySuiteRow[]
-}
-
-type ActivityWeek = { created: number; updated: number; executed: number; defects: number }
-type ActivityUser = {
-  userId: string; userName: string; role: string
-  weeks: ActivityWeek[]
-  totals: ActivityWeek
-}
-type UserActivityData = {
-  weeks: { label: string; from: string; to: string }[]
-  users: ActivityUser[]
-  weekTotals: ActivityWeek[]
-  overallTotals: ActivityWeek
-}
 
 type FilterMode = 'preset' | 'single' | 'range'
 
@@ -55,11 +47,23 @@ function buildParams(
 }
 
 function StatCard({
-  label, value, sub, icon, color,
-}: { label: string; value: string | number; sub?: string; icon: React.ReactNode; color: string }) {
+  label, value, sub, icon, color, iconWrapClass, iconClass,
+}: {
+  label: string
+  value: string | number
+  sub?: string
+  icon: React.ReactElement
+  color: string
+  iconWrapClass?: string
+  iconClass?: string
+}) {
   return (
     <div className="bg-card border rounded-lg p-4 flex gap-3 items-start">
-      <div className={`mt-0.5 p-2 rounded-md ${color}`}>{icon}</div>
+      <div className={`mt-0.5 rounded-md flex items-center justify-center ${iconWrapClass ?? 'h-12 w-12 p-2.5'} ${color}`}>
+        {iconClass ? (
+          <span className={iconClass}>{icon}</span>
+        ) : icon}
+      </div>
       <div>
         <p className="text-xs text-muted-foreground">{label}</p>
         <p className="text-2xl font-bold leading-tight">{value}</p>
@@ -82,15 +86,17 @@ export default function ReportsPage() {
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
   const [projectFilter, setProjectFilter] = useState('')
+  const [showExportMenu, setShowExportMenu] = useState(false)
+  const [isExporting, setIsExporting] = useState(false)
 
   const qs = buildParams(filterMode, period, projectFilter, singleDate, from, to)
 
-  const { data: summaryData, isLoading: summaryLoading } = useQuery({
+  const { data: summaryData, isLoading: summaryLoading } = useQuery<ReportSummary>({
     queryKey: ['report-summary', qs],
     queryFn: () => api.get(`/reports/summary?${qs}`).then((r) => r.data.data),
   })
 
-  const { data: projectStats, isLoading: projLoading } = useQuery({
+  const { data: projectStats, isLoading: projLoading } = useQuery<ProjectStat[]>({
     queryKey: ['report-project-stats', qs],
     queryFn: () => api.get(`/reports/project-stats?${qs}`).then((r) => r.data.data),
   })
@@ -98,7 +104,7 @@ export default function ReportsPage() {
   // preset mode sends period param; single/range sends only from/to → API falls to weekly-bucket else branch
   const trendQs = buildParams(filterMode, period, projectFilter, singleDate, from, to)
 
-  const { data: trendData, isLoading: trendLoading } = useQuery({
+  const { data: trendData, isLoading: trendLoading } = useQuery<TrendPoint[]>({
     queryKey: ['report-trend', trendQs],
     queryFn: () => api.get(`/reports/trend?${trendQs}`).then((r) => r.data.data),
   })
@@ -129,11 +135,93 @@ export default function ReportsPage() {
     : filterMode === 'range'
     ? `${from || '…'} – ${to || '…'}`
     : period === 'week' ? 'this week' : period === 'month' ? 'this month' : 'this year'
+  const qaUsers = activityData?.users.filter((u) => u.role === 'QA') ?? []
+  const visibleUsers: ActivityUser[] = showNonEmpty
+    ? qaUsers.filter((u) =>
+        u.totals.created + u.totals.updated + u.totals.executed + u.totals.defects > 0
+      )
+    : qaUsers
+  const exportDisabled = isExporting || summaryLoading || trendLoading || bugsLoading || activityLoading || projLoading
+    || !summaryData || !trendData || !bugsBySuite || !activityData || !projectStats
+
+  async function handleExport(format: 'xlsx' | 'pdf') {
+    if (!summaryData || !trendData || !bugsBySuite || !activityData || !projectStats) return
+
+    setShowExportMenu(false)
+    setIsExporting(true)
+
+    try {
+      const meta = buildReportExportMeta({
+        filterMode,
+        period,
+        singleDate,
+        from,
+        to,
+        projectFilter,
+        projects: projectsData ?? [],
+      })
+      const stamp = new Date().toISOString().slice(0, 10)
+      const fileBase = `reports-${projectFilter ? meta.projectName.toLowerCase().replace(/[^a-z0-9]+/gi, '-') : 'all-projects'}-${stamp}`
+      const payload = {
+        summary: summaryData,
+        trend: trendData,
+        bugsBySuite,
+        activityData,
+        visibleUsers,
+        projectStats,
+        generatedAt: new Date(),
+        periodLabel,
+        projectName: meta.projectName,
+        filterDescription: meta.filterDescription,
+        weeksShown: activityWeeks,
+      }
+
+      if (format === 'xlsx') {
+        await exportReportsXlsx(payload, `${fileBase}.xlsx`)
+      } else {
+        exportReportsPdf(payload, `${fileBase}.pdf`)
+      }
+    } finally {
+      setIsExporting(false)
+    }
+  }
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold">Reports</h1>
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setShowExportMenu((value) => !value)}
+            disabled={exportDisabled}
+            className="inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {isExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+            Export
+            <ChevronDown className="h-4 w-4" />
+          </button>
+          {showExportMenu && !exportDisabled && (
+            <div className="absolute right-0 top-full z-10 mt-2 w-44 overflow-hidden rounded-md border bg-card shadow-lg">
+              <button
+                type="button"
+                onClick={() => handleExport('xlsx')}
+                className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-muted"
+              >
+                <FileSpreadsheet className="h-4 w-4 text-emerald-400" />
+                Export as XLSX
+              </button>
+              <button
+                type="button"
+                onClick={() => handleExport('pdf')}
+                className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-muted"
+              >
+                <FileText className="h-4 w-4 text-rose-400" />
+                Export as PDF
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* ── Unified filter bar ──────────────────────────────────────── */}
@@ -230,29 +318,33 @@ export default function ReportsPage() {
             label="TC Created"
             value={s.tcCreatedInPeriod}
             sub={`${s.totalTestCases} total`}
-            icon={<FlaskConical className="h-4 w-4" />}
+            icon={<FlaskConical className="h-full w-full" />}
             color="bg-blue-500/15 text-blue-400"
+            iconWrapClass="h-11 w-11 p-2.5"
           />
           <StatCard
             label="TC Executed"
             value={s.executions.executed}
             sub={`${s.executions.passRate}% pass rate`}
-            icon={<CheckCircle2 className="h-4 w-4" />}
+            icon={<CheckCircle2 className="h-full w-full" />}
             color="bg-green-500/15 text-green-400"
+            iconWrapClass="h-10 w-10 p-2"
           />
           <StatCard
             label="Bugs Reported"
             value={s.bugsInPeriod}
             sub={`${s.totalBugs} total`}
-            icon={<Bug className="h-4 w-4" />}
+            icon={<Bug className="h-full w-full" />}
             color="bg-red-500/15 text-red-400"
+            iconWrapClass="h-10 w-10 p-2"
           />
           <StatCard
             label="Test Runs"
             value={s.totalRuns}
             sub={periodLabel}
-            icon={<TrendingUp className="h-4 w-4" />}
+            icon={<TrendingUp className="h-full w-full" />}
             color="bg-purple-500/15 text-purple-400"
+            iconWrapClass="h-11 w-11 p-2.5"
           />
         </div>
       ) : null}
@@ -427,13 +519,6 @@ export default function ReportsPage() {
             <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
           </div>
         ) : activityData ? (() => {
-          const qaUsers = activityData.users.filter((u) => u.role === 'QA')
-          const visibleUsers = showNonEmpty
-            ? qaUsers.filter((u) =>
-                u.totals.created + u.totals.updated + u.totals.executed + u.totals.defects > 0
-              )
-            : qaUsers
-
           const SUBCOLS = [
             { key: 'created' as const,  label: 'Case\ncreated'  },
             { key: 'updated' as const,  label: 'Case\nupdated'  },

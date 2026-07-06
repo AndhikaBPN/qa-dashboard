@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+const IdSchema = z.string().min(1)
+
 export const ProjectStatusEnum = z.enum(['ACTIVE', 'ARCHIVED'])
 
 export const ProjectCreateSchema = z.object({
@@ -55,16 +57,16 @@ export const TestCaseCreateSchema = z.object({
   priority: PriorityEnum,
   type: TestTypeEnum,
   scenarioType: ScenarioTypeEnum,
-  suiteId: z.string().cuid().optional(),
-  projectId: z.string().cuid().optional(),
+  suiteId: IdSchema.optional(),
+  projectId: IdSchema.optional(),
   jiraIssueKey: z.string().optional(),
 })
 
 export const TestCaseUpdateSchema = TestCaseCreateSchema.partial()
 
 export const TestCaseQuerySchema = z.object({
-  suiteId: z.string().cuid().optional(),
-  projectId: z.string().cuid().optional(),
+  suiteId: IdSchema.optional(),
+  projectId: IdSchema.optional(),
   priority: PriorityEnum.optional(),
   type: TestTypeEnum.optional(),
   scenarioType: ScenarioTypeEnum.optional(),
@@ -75,36 +77,36 @@ export const TestCaseQuerySchema = z.object({
 })
 
 export const BulkActionSchema = z.object({
-  ids: z.array(z.string().cuid()).min(1),
+  ids: z.array(IdSchema).min(1),
   action: z.enum(['delete', 'move', 'assign-suite']),
-  suiteId: z.string().cuid().optional(),
+  suiteId: IdSchema.optional(),
 })
 
 export const ExportQuerySchema = z.object({
   format: z.enum(['csv', 'xlsx']).default('xlsx'),
-  suiteId: z.string().cuid().optional(),
+  suiteId: IdSchema.optional(),
 })
 
 export const SuiteTypeEnum = z.enum(['CASE_FOLDER', 'RUN_FOLDER'])
 
 export const SuiteCreateSchema = z.object({
   name: z.string().min(1).max(100),
-  parentId: z.string().cuid().optional(),
-  projectId: z.string().cuid().optional(),
+  parentId: IdSchema.optional(),
+  projectId: IdSchema.optional(),
   type: SuiteTypeEnum.optional().default('CASE_FOLDER'),
 })
 
 export const SuiteUpdateSchema = z.object({
   name: z.string().min(1).max(100).optional(),
-  parentId: z.string().cuid().nullable().optional(),
+  parentId: IdSchema.nullable().optional(),
   orderIndex: z.number().int().min(0).optional(),
 })
 
 export const TestRunCreateSchema = z.object({
   name: z.string().min(1).max(255),
-  suiteId: z.string().cuid().optional(),
-  projectId: z.string().cuid().optional(),
-  testCaseIds: z.array(z.string().cuid()).min(1),
+  suiteId: IdSchema.optional(),
+  projectId: IdSchema.optional(),
+  testCaseIds: z.array(IdSchema).min(1),
 })
 
 export const ExecutionUpdateSchema = z.object({
@@ -114,7 +116,7 @@ export const ExecutionUpdateSchema = z.object({
 })
 
 export const BulkExecutionUpdateSchema = z.object({
-  ids: z.array(z.string().cuid()).min(1),
+  ids: z.array(IdSchema).min(1),
   status: ExecutionStatusEnum,
 })
 
@@ -128,7 +130,7 @@ export const TrendQuerySchema = z.object({
 })
 
 export const JiraLinkSchema = z.object({
-  testCaseId: z.string().cuid(),
+  testCaseId: IdSchema,
   jiraIssueKey: z.string().min(1),
 })
 
@@ -145,9 +147,9 @@ export const BugCreateSchema = z.object({
   severity: BugSeverityEnum,
   priority: PriorityEnum,
   type: BugTypeEnum,
-  projectId: z.string().cuid(),
-  assigneeId: z.string().cuid().optional().nullable(),
-  testCaseId: z.string().cuid().optional().nullable(),
+  projectId: IdSchema,
+  assigneeId: IdSchema.optional().nullable(),
+  testCaseId: IdSchema.optional().nullable(),
 })
 
 export const BugUpdateSchema = BugCreateSchema.omit({ projectId: true }).partial().extend({
@@ -155,7 +157,7 @@ export const BugUpdateSchema = BugCreateSchema.omit({ projectId: true }).partial
 })
 
 export const BugQuerySchema = z.object({
-  projectId: z.string().cuid().optional(),
+  projectId: IdSchema.optional(),
   status: BugStatusEnum.optional(),
   severity: BugSeverityEnum.optional(),
   priority: PriorityEnum.optional(),
