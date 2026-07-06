@@ -12,6 +12,7 @@ import TestRunsPage from '@/pages/TestRunsPage'
 import ReportsPage from '@/pages/ReportsPage'
 import ExportPage from '@/pages/ExportPage'
 import ImportJobsPage from '@/pages/ImportJobsPage'
+import SharedSuitePage from '@/pages/SharedSuitePage'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const token = useAuthStore((s) => s.accessToken)
@@ -23,6 +24,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/shared/:token" element={<SharedSuitePage />} />
       <Route
         path="/*"
         element={

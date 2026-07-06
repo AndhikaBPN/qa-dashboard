@@ -13,6 +13,7 @@ import { testRunRoutes } from './routes/testRuns.js'
 import { executionRoutes } from './routes/executions.js'
 import { reportRoutes } from './routes/reports.js'
 import { jiraRoutes } from './routes/jira.js'
+import { sharedRoutes } from './routes/shared.js'
 
 export async function buildApp() {
   const app = Fastify({ logger: true, bodyLimit: 20 * 1024 * 1024 })
@@ -66,6 +67,7 @@ export async function buildApp() {
   app.register(executionRoutes, { prefix: `${PREFIX}/executions` })
   app.register(reportRoutes,    { prefix: `${PREFIX}/reports` })
   app.register(jiraRoutes,      { prefix: `${PREFIX}/jira` })
+  app.register(sharedRoutes,    { prefix: `${PREFIX}/shared` })
 
   app.get('/health', async () => ({ status: 'ok', ts: new Date().toISOString() }))
 

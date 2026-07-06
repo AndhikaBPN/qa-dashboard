@@ -165,6 +165,7 @@ model TestRun {
   executions  Execution[]
   createdAt   DateTime    @default(now())
   completedAt DateTime?
+  shareToken  String?     @unique
 }
 
 model Execution {

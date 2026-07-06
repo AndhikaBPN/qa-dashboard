@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import {
   Plus, Trash2, X, Search, CheckCircle2, XCircle, MinusCircle, AlertTriangle, Circle,
-  Bug, ChevronRight, ChevronDown, Folder, FolderOpen, Pencil, Save,
+  Bug, ChevronRight, ChevronDown, Folder, FolderOpen, Pencil, Save, Share2, Copy, Check, Link2Off,
 } from 'lucide-react'
 import BugFormModal from '@/components/bug/BugFormModal'
 
@@ -28,6 +28,7 @@ interface TestRun {
   completedAt: string | null
   createdAt: string
   createdBy: { id: string; name: string }
+  shareToken: string | null
   _count: { executions: number }
 }
 
@@ -889,6 +890,8 @@ export default function TestSuitesTab({ projectId }: { projectId: string }) {
   const [openRunId, setOpenRunId] = useState<string | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
   const [bugModal, setBugModal] = useState<{ open: boolean; tcId: string | null }>({ open: false, tcId: null })
+  const [shareModal, setShareModal] = useState<{ runId: string; runName: string; token: string | null } | null>(null)
+  const [copied, setCopied] = useState(false)
 
   // Suites (folders) — RUN_FOLDER type only, separate from test-case folders
   const { data: suitesData } = useQuery({
@@ -918,6 +921,33 @@ export default function TestSuitesTab({ projectId }: { projectId: string }) {
     mutationFn: (id: string) => api.delete(`/test-runs/${id}`),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['test-runs'] }); setDeleteConfirm(null) },
   })
+
+  const shareMut = useMutation({
+    mutationFn: (id: string) => api.post(`/test-runs/${id}/share`).then((r) => r.data.data.shareToken as string),
+    onSuccess: (token) => {
+      qc.invalidateQueries({ queryKey: ['test-runs'] })
+      setShareModal((prev) => prev ? { ...prev, token } : null)
+    },
+  })
+
+  const revokeMut = useMutation({
+    mutationFn: (id: string) => api.delete(`/test-runs/${id}/share`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['test-runs'] })
+      setShareModal((prev) => prev ? { ...prev, token: null } : null)
+    },
+  })
+
+  function openShare(run: TestRun) {
+    setShareModal({ runId: run.id, runName: run.name, token: run.shareToken })
+    if (!run.shareToken) shareMut.mutate(run.id)
+  }
+
+  function copyLink(token: string) {
+    navigator.clipboard.writeText(`${window.location.origin}/shared/${token}`)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
 
   const { data: usersData } = useQuery({
     queryKey: ['users'],
@@ -1032,6 +1062,17 @@ export default function TestSuitesTab({ projectId }: { projectId: string }) {
                     >
                       Open
                     </button>
+                    <button
+                      onClick={() => openShare(run)}
+                      title="Share"
+                      className={`p-1.5 rounded border transition-colors ${
+                        run.shareToken
+                          ? 'border-primary/50 text-primary bg-primary/5 hover:bg-primary/10'
+                          : 'border-muted-foreground/30 text-muted-foreground hover:bg-muted'
+                      }`}
+                    >
+                      <Share2 className="h-3.5 w-3.5" />
+                    </button>
                     {!isViewer && (
                       <button
                         onClick={() => setDeleteConfirm(run.id)}
@@ -1083,6 +1124,54 @@ export default function TestSuitesTab({ projectId }: { projectId: string }) {
           users={users}
           onClose={() => setBugModal({ open: false, tcId: null })}
         />
+      )}
+
+      {shareModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-background border rounded-lg shadow-lg p-5 w-96">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-semibold">Share Test Suite</h3>
+              <button onClick={() => setShareModal(null)} className="text-muted-foreground hover:text-foreground">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <p className="text-xs text-muted-foreground mb-3">
+              <span className="font-medium text-foreground">{shareModal.runName}</span>
+              {' — '}anyone with this link can view without logging in.
+            </p>
+            {shareMut.isPending && !shareModal.token ? (
+              <div className="text-xs text-muted-foreground py-2">Generating link…</div>
+            ) : shareModal.token ? (
+              <>
+                <div className="flex items-center gap-2 mb-4">
+                  <input
+                    readOnly
+                    value={`${window.location.origin}/shared/${shareModal.token}`}
+                    className="flex-1 border rounded-md px-3 py-1.5 text-xs bg-muted/20 focus:outline-none truncate"
+                  />
+                  <button
+                    onClick={() => copyLink(shareModal.token!)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md border shrink-0 transition-colors ${
+                      copied ? 'border-green-600 text-green-400 bg-green-900/20' : 'hover:bg-muted'
+                    }`}
+                  >
+                    {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                    {copied ? 'Copied' : 'Copy'}
+                  </button>
+                </div>
+                {!isViewer && (
+                  <button
+                    onClick={() => revokeMut.mutate(shareModal.runId)}
+                    disabled={revokeMut.isPending}
+                    className="flex items-center gap-1.5 text-xs text-destructive hover:underline disabled:opacity-50"
+                  >
+                    <Link2Off className="h-3.5 w-3.5" /> Revoke link
+                  </button>
+                )}
+              </>
+            ) : null}
+          </div>
+        </div>
       )}
 
       {deleteConfirm && (
