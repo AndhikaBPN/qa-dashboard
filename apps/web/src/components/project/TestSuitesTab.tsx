@@ -589,6 +589,7 @@ function SuiteDetailPanel({
     mutationFn: ({ execId, status }: { execId: string; status: string }) =>
       api.put(`/executions/${execId}`, { status }),
     onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['test-runs'] })
       qc.invalidateQueries({ queryKey: ['test-run', runId] })
       qc.invalidateQueries({ queryKey: ['test-run-progress', runId] })
     },
@@ -597,6 +598,7 @@ function SuiteDetailPanel({
   const bulkRemoveMut = useMutation({
     mutationFn: (ids: string[]) => api.post('/executions/bulk-delete', { ids }),
     onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['test-runs'] })
       qc.invalidateQueries({ queryKey: ['test-run', runId] })
       qc.invalidateQueries({ queryKey: ['test-run-progress', runId] })
       setSelectedExecIds(new Set())
@@ -608,6 +610,7 @@ function SuiteDetailPanel({
     mutationFn: ({ ids, status }: { ids: string[]; status: string }) =>
       api.post('/executions/bulk-update', { ids, status }),
     onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['test-runs'] })
       qc.invalidateQueries({ queryKey: ['test-run', runId] })
       qc.invalidateQueries({ queryKey: ['test-run-progress', runId] })
       setSelectedExecIds(new Set())
@@ -803,19 +806,6 @@ function SuiteDetailPanel({
                 )}
               </div>
             </>
-          )}
-          {!runData?.completedAt && (
-            <button
-              onClick={() =>
-                api.put(`/test-runs/${runId}/complete`).then(() => {
-                  qc.invalidateQueries({ queryKey: ['test-runs'] })
-                  qc.invalidateQueries({ queryKey: ['test-run', runId] })
-                })
-              }
-              className="px-3 py-1.5 text-sm border rounded-md hover:bg-muted"
-            >
-              Mark Complete
-            </button>
           )}
         </div>
       </div>

@@ -3,6 +3,40 @@ import { prisma } from '../lib/prisma.js'
 import { ok, badRequest, notFound } from '../lib/response.js'
 import { ExecutionUpdateSchema, BulkExecutionUpdateSchema } from '../types/schemas.js'
 
+async function syncTestRunCompletion(testRunId: string) {
+  const [run, counts] = await Promise.all([
+    prisma.testRun.findUnique({
+      where: { id: testRunId },
+      select: { id: true, completedAt: true },
+    }),
+    prisma.execution.groupBy({
+      by: ['status'],
+      where: { testRunId },
+      _count: { status: true },
+    }),
+  ])
+
+  if (!run) return
+
+  const total = counts.reduce((sum, item) => sum + item._count.status, 0)
+  const pass = counts.find((item) => item.status === 'PASS')?._count.status ?? 0
+  const shouldComplete = total > 0 && pass === total
+
+  if (shouldComplete && !run.completedAt) {
+    await prisma.testRun.update({
+      where: { id: testRunId },
+      data: { completedAt: new Date() },
+    })
+  }
+
+  if (!shouldComplete && run.completedAt) {
+    await prisma.testRun.update({
+      where: { id: testRunId },
+      data: { completedAt: null },
+    })
+  }
+}
+
 export const executionRoutes: FastifyPluginAsync = async (fastify) => {
   const auth = { preHandler: [fastify.authenticate] }
 
@@ -60,12 +94,21 @@ export const executionRoutes: FastifyPluginAsync = async (fastify) => {
         executor: { select: { id: true, name: true } },
       },
     })
+
+    await syncTestRunCompletion(existing.testRunId)
+
     return ok(reply, execution)
   })
 
   fastify.post('/bulk-update', auth, async (request, reply) => {
     const body = BulkExecutionUpdateSchema.safeParse(request.body)
     if (!body.success) return badRequest(reply, body.error.message)
+
+    const affectedRuns = await prisma.execution.findMany({
+      where: { id: { in: body.data.ids } },
+      select: { testRunId: true },
+      distinct: ['testRunId'],
+    })
 
     const result = await prisma.execution.updateMany({
       where: { id: { in: body.data.ids } },
@@ -75,6 +118,9 @@ export const executionRoutes: FastifyPluginAsync = async (fastify) => {
         executedAt: new Date(),
       },
     })
+
+    await Promise.all(affectedRuns.map((item) => syncTestRunCompletion(item.testRunId)))
+
     return ok(reply, { updated: result.count })
   })
 
@@ -83,13 +129,22 @@ export const executionRoutes: FastifyPluginAsync = async (fastify) => {
     const existing = await prisma.execution.findUnique({ where: { id } })
     if (!existing) return notFound(reply)
     await prisma.execution.delete({ where: { id } })
+    await syncTestRunCompletion(existing.testRunId)
     return reply.code(204).send()
   })
 
   fastify.post('/bulk-delete', auth, async (request, reply) => {
     const { ids } = request.body as { ids: string[] }
     if (!Array.isArray(ids) || ids.length === 0) return badRequest(reply, 'ids required')
+
+    const affectedRuns = await prisma.execution.findMany({
+      where: { id: { in: ids } },
+      select: { testRunId: true },
+      distinct: ['testRunId'],
+    })
+
     await prisma.execution.deleteMany({ where: { id: { in: ids } } })
+    await Promise.all(affectedRuns.map((item) => syncTestRunCompletion(item.testRunId)))
     return reply.code(204).send()
   })
 }
