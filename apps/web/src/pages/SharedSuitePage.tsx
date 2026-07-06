@@ -29,7 +29,7 @@ interface Progress {
 
 interface Execution {
   id: string; status: string; actualResult: string | null
-  testCase: { id: string; tcId: string; title: string; priority: string; type: string }
+  testCase: { id: string; tcId: string; title: string; priority: string; type: string; expectedResult: string }
 }
 
 interface SharedRun {
