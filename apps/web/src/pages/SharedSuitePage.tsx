@@ -143,9 +143,10 @@ export default function SharedSuitePage() {
               <tr>
                 <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground w-24">ID</th>
                 <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Title</th>
-                <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground w-24">Priority</th>
-                <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground w-32">Status</th>
+                <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground w-20">Priority</th>
+                <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Expected Result</th>
                 <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Actual Result</th>
+                <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground w-32">Status</th>
               </tr>
             </thead>
             <tbody>
@@ -156,13 +157,16 @@ export default function SharedSuitePage() {
                     <span className="line-clamp-2 leading-snug">{exec.testCase.title}</span>
                   </td>
                   <td className="px-4 py-3 text-xs">{exec.testCase.priority}</td>
+                  <td className="px-4 py-3 text-sm text-muted-foreground whitespace-pre-wrap">
+                    {exec.testCase.expectedResult || <span className="italic text-xs">—</span>}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-muted-foreground whitespace-pre-wrap">
+                    {exec.actualResult || <span className="italic text-xs">—</span>}
+                  </td>
                   <td className="px-4 py-3">
                     <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[exec.status]}`}>
                       {STATUS_ICONS[exec.status]} {exec.status}
                     </span>
-                  </td>
-                  <td className="px-4 py-3 text-sm text-muted-foreground whitespace-pre-wrap">
-                    {exec.actualResult || <span className="italic text-xs">—</span>}
                   </td>
                 </tr>
               ))}
