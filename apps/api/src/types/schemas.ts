@@ -142,14 +142,15 @@ export const BugCreateSchema = z.object({
   title: z.string().min(1).max(255),
   steps: z.array(z.string()).default([]),
   attachment: z.array(z.string()).default([]),
-  expectedResult: z.string().min(1),
-  actualResult: z.string().min(1),
-  severity: BugSeverityEnum,
-  priority: PriorityEnum,
-  type: BugTypeEnum,
+  expectedResult: z.string().default('-'),
+  actualResult: z.string().default('-'),
+  severity: BugSeverityEnum.default('HIGH'),
+  priority: PriorityEnum.default('HIGH'),
+  type: BugTypeEnum.default('FUNCTIONAL'),
   projectId: IdSchema,
   assigneeId: IdSchema.optional().nullable(),
   testCaseId: IdSchema.optional().nullable(),
+  jiraLink: z.string().optional().nullable(),
 })
 
 export const BugUpdateSchema = BugCreateSchema.omit({ projectId: true }).partial().extend({
