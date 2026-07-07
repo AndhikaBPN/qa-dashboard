@@ -11,7 +11,7 @@ import {
 import {
   Plus, Trash2, X,
   Search,
-  Bug, ChevronRight, ChevronDown, Folder, FolderOpen, Pencil, Save, Share2, Copy, Check, Link2Off,
+  Bug, ChevronRight, ChevronDown, Folder, FolderOpen, Pencil, Save, Share2, Copy, Check, Link2Off, ExternalLink,
 } from 'lucide-react'
 import BugFormModal from '@/components/bug/BugFormModal'
 
@@ -406,7 +406,7 @@ function CreateRunModal({
 // ─── Expanded Row ────────────────────────────────────────────────────────────
 
 interface BugItem {
-  id: string; bugId: string; title: string; status: string; severity: string
+  id: string; bugId: string; title: string; status: string; severity: string; jiraLink?: string | null
 }
 
 interface Step {
@@ -578,16 +578,32 @@ function ExpandedRow({
                   <div className="px-3 py-2 text-xs text-muted-foreground">No bugs linked to this test case.</div>
                 ) : (
                   bugsData.map((bug) => (
-                    <button
+                    <div
                       key={bug.id}
-                      onClick={() => navigate(`/bugs/${projectId}?bug=${bug.id}`)}
-                      className="w-full flex items-center gap-3 px-3 py-2 text-sm hover:bg-muted/30 border-b last:border-0 text-left transition-colors"
+                      className="w-full flex items-center gap-3 px-3 py-2 text-sm border-b last:border-0"
                     >
-                      <span className="font-mono text-xs text-muted-foreground w-20 shrink-0">{bug.bugId}</span>
-                      <span className="flex-1 truncate">{bug.title}</span>
-                      <span className="text-xs px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground shrink-0">{bug.severity}</span>
-                      <span className="text-xs px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground shrink-0">{bug.status}</span>
-                    </button>
+                      <button
+                        onClick={() => navigate(`/bugs/${projectId}?bug=${bug.id}`)}
+                        className="flex items-center gap-3 flex-1 min-w-0 text-left hover:opacity-80 transition-opacity"
+                      >
+                        <span className="font-mono text-xs text-muted-foreground w-20 shrink-0">{bug.bugId}</span>
+                        <span className="flex-1 truncate">{bug.title}</span>
+                        <span className="text-xs px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground shrink-0">{bug.severity}</span>
+                        <span className="text-xs px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground shrink-0">{bug.status}</span>
+                      </button>
+                      {bug.jiraLink && (
+                        <a
+                          href={bug.jiraLink}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          title="Open in Jira"
+                          className="shrink-0 text-muted-foreground hover:text-primary transition-colors"
+                        >
+                          <ExternalLink className="h-3.5 w-3.5" />
+                        </a>
+                      )}
+                    </div>
                   ))
                 )}
               </div>

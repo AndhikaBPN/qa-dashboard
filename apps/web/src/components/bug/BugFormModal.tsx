@@ -29,8 +29,9 @@ interface Props {
   onClose: () => void
 }
 
-export default function BugFormModal({ projectId, editBug, defaultTestCaseId: _defaultTestCaseId, users: _users, onClose }: Props) {
+export default function BugFormModal({ projectId, editBug, defaultTestCaseId, users: _users, onClose }: Props) {
   const qc = useQueryClient()
+  const [title, setTitle] = useState(editBug?.title ?? '')
   const [jiraLink, setJiraLink] = useState(editBug?.jiraLink ?? '')
 
   const createMut = useMutation({
@@ -42,7 +43,6 @@ export default function BugFormModal({ projectId, editBug, defaultTestCaseId: _d
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['bugs'] }); onClose() },
   })
 
-  // Close on Escape
   useEffect(() => {
     function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose() }
     window.addEventListener('keydown', onKey)
@@ -50,19 +50,19 @@ export default function BugFormModal({ projectId, editBug, defaultTestCaseId: _d
   }, [onClose])
 
   function submit() {
-    const link = jiraLink.trim()
     const payload = {
       projectId,
-      jiraLink: link || null,
-      title: link || 'Bug',
+      title: title.trim(),
+      jiraLink: jiraLink.trim(),
       expectedResult: '-',
       actualResult: '-',
+      testCaseId: editBug?.testCaseId ?? defaultTestCaseId ?? null,
     }
     if (editBug) updateMut.mutate(payload)
     else createMut.mutate(payload)
   }
 
-  const canSubmit = jiraLink.trim().length > 0
+  const canSubmit = title.trim().length > 0 && jiraLink.trim().length > 0
   const isPending = createMut.isPending || updateMut.isPending
   const isValidUrl = jiraLink.trim().startsWith('http://') || jiraLink.trim().startsWith('https://')
 
@@ -77,29 +77,40 @@ export default function BugFormModal({ projectId, editBug, defaultTestCaseId: _d
         </div>
 
         <div className="p-5 space-y-4">
+          {/* Title */}
+          <div>
+            <label className="text-xs font-medium mb-1.5 block">Title *</label>
+            <input
+              autoFocus
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              className="w-full border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary bg-background"
+              placeholder="Brief description of the bug"
+            />
+          </div>
+
+          {/* Jira Link */}
           <div>
             <label className="text-xs font-medium mb-1.5 block">Jira Bug Link *</label>
             <input
-              autoFocus
               value={jiraLink}
               onChange={(e) => setJiraLink(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && canSubmit && submit()}
               className="w-full border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary bg-background"
               placeholder="https://yourorg.atlassian.net/browse/PROJ-123"
             />
+            {isValidUrl && (
+              <a
+                href={jiraLink.trim()}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline mt-1.5"
+              >
+                <ExternalLink className="h-3 w-3" />
+                {jiraLink.trim()}
+              </a>
+            )}
           </div>
-
-          {isValidUrl && (
-            <a
-              href={jiraLink.trim()}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline"
-            >
-              <ExternalLink className="h-3.5 w-3.5" />
-              {jiraLink.trim()}
-            </a>
-          )}
         </div>
 
         <div className="flex justify-end gap-2 px-5 py-4 border-t">
@@ -146,8 +157,8 @@ function readFileAsDataUrl(file: File): Promise<string> {
   })
 }
 
-// Old full form component body:
-//   - form state: title, expectedResult, actualResult, severity, priority, type, status, assigneeId, testCaseId
+// Old full form fields:
+//   - title, expectedResult, actualResult, severity, priority, type, status, assigneeId, testCaseId
 //   - steps: dynamic array (add/remove)
 //   - attachments: drag-drop, paste, URL input, thumbnail grid, lightbox
 //   - testCases query from /test-cases
