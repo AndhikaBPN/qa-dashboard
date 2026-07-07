@@ -1124,6 +1124,16 @@ export default function TestSuitesTab({ projectId }: { projectId: string }) {
             </p>
             {shareMut.isPending && !shareModal.token ? (
               <div className="text-xs text-muted-foreground py-2">Generating link…</div>
+            ) : shareMut.isError ? (
+              <div className="space-y-2">
+                <p className="text-xs text-destructive">Failed to generate link. The server may need to be updated.</p>
+                <button
+                  onClick={() => shareMut.mutate(shareModal.runId)}
+                  className="px-3 py-1.5 text-xs border rounded-md hover:bg-muted"
+                >
+                  Retry
+                </button>
+              </div>
             ) : shareModal.token ? (
               <>
                 <div className="flex items-center gap-2 mb-4">
