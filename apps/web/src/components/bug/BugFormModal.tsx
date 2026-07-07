@@ -36,11 +36,19 @@ export default function BugFormModal({ projectId, editBug, defaultTestCaseId, us
 
   const createMut = useMutation({
     mutationFn: (body: any) => api.post('/bugs', body),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['bugs'] }); onClose() },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['bugs'] })
+      qc.invalidateQueries({ queryKey: ['tc-bugs'] })
+      onClose()
+    },
   })
   const updateMut = useMutation({
     mutationFn: (body: any) => api.put(`/bugs/${editBug!.id}`, body),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['bugs'] }); onClose() },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['bugs'] })
+      qc.invalidateQueries({ queryKey: ['tc-bugs'] })
+      onClose()
+    },
   })
 
   useEffect(() => {
