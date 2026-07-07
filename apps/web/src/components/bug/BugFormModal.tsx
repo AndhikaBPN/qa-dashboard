@@ -58,10 +58,11 @@ export default function BugFormModal({ projectId, editBug, defaultTestCaseId, us
   }, [onClose])
 
   function submit() {
+    const link = jiraLink.trim()
     const payload = {
       projectId,
-      title: title.trim(),
-      jiraLink: jiraLink.trim(),
+      title: title.trim() || link,
+      jiraLink: link,
       expectedResult: '-',
       actualResult: '-',
       testCaseId: editBug?.testCaseId ?? defaultTestCaseId ?? null,
@@ -70,7 +71,7 @@ export default function BugFormModal({ projectId, editBug, defaultTestCaseId, us
     else createMut.mutate(payload)
   }
 
-  const canSubmit = title.trim().length > 0 && jiraLink.trim().length > 0
+  const canSubmit = jiraLink.trim().length > 0
   const isPending = createMut.isPending || updateMut.isPending
   const isValidUrl = jiraLink.trim().startsWith('http://') || jiraLink.trim().startsWith('https://')
 
@@ -87,7 +88,7 @@ export default function BugFormModal({ projectId, editBug, defaultTestCaseId, us
         <div className="p-5 space-y-4">
           {/* Title */}
           <div>
-            <label className="text-xs font-medium mb-1.5 block">Title *</label>
+            <label className="text-xs font-medium mb-1.5 block">Title</label>
             <input
               autoFocus
               value={title}
