@@ -3,6 +3,9 @@ import { prisma } from '../lib/prisma.js'
 import { ok, badRequest, notFound } from '../lib/response.js'
 import { ExecutionUpdateSchema, BulkExecutionUpdateSchema } from '../types/schemas.js'
 
+type StatusCountRow = { status: string; _count: { status: number } }
+type RunRef = { testRunId: string }
+
 async function syncTestRunCompletion(testRunId: string) {
   const [run, counts] = await Promise.all([
     prisma.testRun.findUnique({
@@ -18,8 +21,8 @@ async function syncTestRunCompletion(testRunId: string) {
 
   if (!run) return
 
-  const total = counts.reduce((sum, item) => sum + item._count.status, 0)
-  const pass = counts.find((item) => item.status === 'PASS')?._count.status ?? 0
+  const total = (counts as StatusCountRow[]).reduce((sum: number, item: StatusCountRow) => sum + item._count.status, 0)
+  const pass = (counts as StatusCountRow[]).find((item: StatusCountRow) => item.status === 'PASS')?._count.status ?? 0
   const shouldComplete = total > 0 && pass === total
 
   if (shouldComplete && !run.completedAt) {
@@ -119,7 +122,7 @@ export const executionRoutes: FastifyPluginAsync = async (fastify) => {
       },
     })
 
-    await Promise.all(affectedRuns.map((item) => syncTestRunCompletion(item.testRunId)))
+    await Promise.all((affectedRuns as RunRef[]).map((item: RunRef) => syncTestRunCompletion(item.testRunId)))
 
     return ok(reply, { updated: result.count })
   })
@@ -144,7 +147,7 @@ export const executionRoutes: FastifyPluginAsync = async (fastify) => {
     })
 
     await prisma.execution.deleteMany({ where: { id: { in: ids } } })
-    await Promise.all(affectedRuns.map((item) => syncTestRunCompletion(item.testRunId)))
+    await Promise.all((affectedRuns as RunRef[]).map((item: RunRef) => syncTestRunCompletion(item.testRunId)))
     return reply.code(204).send()
   })
 }

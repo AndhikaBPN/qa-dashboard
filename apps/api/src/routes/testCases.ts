@@ -48,6 +48,13 @@ async function generateTcId(): Promise<string> {
   return `TC-${String(num + 1).padStart(3, '0')}`
 }
 
+type TcExportShape = {
+  tcId: string; title: string; priority: string; type: string
+  scenarioType: string; precondition: string | null; steps: unknown
+  expectedResult: string; jiraIssueKey: string | null
+  suite: { name: string } | null; author: { name: string }
+}
+
 export const testCaseRoutes: FastifyPluginAsync = async (fastify) => {
   const auth = { preHandler: [fastify.authenticate] }
 
@@ -123,7 +130,7 @@ export const testCaseRoutes: FastifyPluginAsync = async (fastify) => {
       orderBy: { tcId: 'asc' },
     })
 
-    const rows = testCases.map((tc) => ({
+    const rows = (testCases as TcExportShape[]).map((tc: TcExportShape) => ({
       ID: tc.tcId,
       Title: tc.title,
       Suite: tc.suite?.name ?? '',
@@ -141,8 +148,8 @@ export const testCaseRoutes: FastifyPluginAsync = async (fastify) => {
       const headers = Object.keys(rows[0] ?? {}).join(',')
       const csv = [
         headers,
-        ...rows.map((r) =>
-          Object.values(r).map((v) => `"${String(v).replace(/"/g, '""')}"`).join(',')
+        ...rows.map((r: Record<string, unknown>) =>
+          Object.values(r).map((v: unknown) => `"${String(v).replace(/"/g, '""')}"`).join(',')
         ),
       ].join('\n')
       reply.header('Content-Type', 'text/csv')
