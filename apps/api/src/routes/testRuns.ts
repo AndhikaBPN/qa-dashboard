@@ -108,8 +108,9 @@ export const testRunRoutes: FastifyPluginAsync = async (fastify) => {
       _count: { status: true },
     })
 
+    type StatusCountRow = { status: string; _count: { status: number } }
     const statusMap: Record<string, number> = {}
-    counts.forEach((c) => { statusMap[c.status] = c._count.status })
+    ;(counts as StatusCountRow[]).forEach((c: StatusCountRow) => { statusMap[c.status] = c._count.status })
 
     const total = Object.values(statusMap).reduce((a, b) => a + b, 0)
     const pass = statusMap['PASS'] ?? 0

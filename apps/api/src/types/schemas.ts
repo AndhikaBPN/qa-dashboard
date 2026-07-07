@@ -158,6 +158,7 @@ export const BugUpdateSchema = BugCreateSchema.omit({ projectId: true }).partial
 
 export const BugQuerySchema = z.object({
   projectId: IdSchema.optional(),
+  testCaseId: IdSchema.optional(),
   status: BugStatusEnum.optional(),
   severity: BugSeverityEnum.optional(),
   priority: PriorityEnum.optional(),

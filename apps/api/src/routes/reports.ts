@@ -47,6 +47,8 @@ const TrendQuerySchema = z.object({
   to: z.string().optional(),
 })
 
+type StatusCountRow = { status: string; _count: { status: number } }
+
 export const reportRoutes: FastifyPluginAsync = async (fastify) => {
   const auth = { preHandler: [fastify.authenticate] }
 
@@ -81,9 +83,9 @@ export const reportRoutes: FastifyPluginAsync = async (fastify) => {
     })
 
     const statusMap: Record<string, number> = {}
-    executions.forEach((e) => { statusMap[e.status] = e._count.status })
+    ;(executions as StatusCountRow[]).forEach((e: StatusCountRow) => { statusMap[e.status] = e._count.status })
 
-    const totalExec = Object.values(statusMap).reduce((a, b) => a + b, 0)
+    const totalExec = Object.values(statusMap).reduce((a: number, b: number) => a + b, 0)
     const pass = statusMap['PASS'] ?? 0
     const fail = statusMap['FAIL'] ?? 0
     const blocked = statusMap['BLOCKED'] ?? 0
@@ -138,9 +140,9 @@ export const reportRoutes: FastifyPluginAsync = async (fastify) => {
         })
 
         const statusMap: Record<string, number> = {}
-        executions.forEach((e) => { statusMap[e.status] = e._count.status })
+        ;(executions as StatusCountRow[]).forEach((e: StatusCountRow) => { statusMap[e.status] = e._count.status })
 
-        const totalExec = Object.values(statusMap).reduce((a, b) => a + b, 0)
+        const totalExec = Object.values(statusMap).reduce((a: number, b: number) => a + b, 0)
         const pass = statusMap['PASS'] ?? 0
         const notRun = statusMap['NOT_RUN'] ?? 0
         const executed = totalExec - notRun
@@ -199,14 +201,14 @@ export const reportRoutes: FastifyPluginAsync = async (fastify) => {
         })
 
         const map: Record<string, number> = {}
-        execs.forEach((e) => { map[e.status] = e._count.status })
+        ;(execs as StatusCountRow[]).forEach((e: StatusCountRow) => { map[e.status] = e._count.status })
 
         points.push({
           label: `${start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${end.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`,
           pass: map['PASS'] ?? 0,
           fail: map['FAIL'] ?? 0,
           blocked: map['BLOCKED'] ?? 0,
-          total: Object.values(map).reduce((a, b) => a + b, 0),
+          total: Object.values(map).reduce((a: number, b: number) => a + b, 0),
         })
       }
 
@@ -228,14 +230,14 @@ export const reportRoutes: FastifyPluginAsync = async (fastify) => {
         })
 
         const map: Record<string, number> = {}
-        execs.forEach((e) => { map[e.status] = e._count.status })
+        ;(execs as StatusCountRow[]).forEach((e: StatusCountRow) => { map[e.status] = e._count.status })
 
         points.push({
           label: start.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }),
           pass: map['PASS'] ?? 0,
           fail: map['FAIL'] ?? 0,
           blocked: map['BLOCKED'] ?? 0,
-          total: Object.values(map).reduce((a, b) => a + b, 0),
+          total: Object.values(map).reduce((a: number, b: number) => a + b, 0),
         })
       }
     } else if (period === 'month') {
@@ -255,14 +257,14 @@ export const reportRoutes: FastifyPluginAsync = async (fastify) => {
         })
 
         const map: Record<string, number> = {}
-        execs.forEach((e) => { map[e.status] = e._count.status })
+        ;(execs as StatusCountRow[]).forEach((e: StatusCountRow) => { map[e.status] = e._count.status })
 
         points.push({
           label: `${start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${end.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`,
           pass: map['PASS'] ?? 0,
           fail: map['FAIL'] ?? 0,
           blocked: map['BLOCKED'] ?? 0,
-          total: Object.values(map).reduce((a, b) => a + b, 0),
+          total: Object.values(map).reduce((a: number, b: number) => a + b, 0),
         })
       }
     } else if (period === 'year') {
@@ -280,14 +282,14 @@ export const reportRoutes: FastifyPluginAsync = async (fastify) => {
         })
 
         const map: Record<string, number> = {}
-        execs.forEach((e) => { map[e.status] = e._count.status })
+        ;(execs as StatusCountRow[]).forEach((e: StatusCountRow) => { map[e.status] = e._count.status })
 
         points.push({
           label: start.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }),
           pass: map['PASS'] ?? 0,
           fail: map['FAIL'] ?? 0,
           blocked: map['BLOCKED'] ?? 0,
-          total: Object.values(map).reduce((a, b) => a + b, 0),
+          total: Object.values(map).reduce((a: number, b: number) => a + b, 0),
         })
       }
     }
@@ -355,7 +357,7 @@ export const reportRoutes: FastifyPluginAsync = async (fastify) => {
         })
 
         const map: Record<string, number> = {}
-        counts.forEach((c) => { map[c.status] = c._count.status })
+        ;(counts as StatusCountRow[]).forEach((c: StatusCountRow) => { map[c.status] = c._count.status })
 
         return {
           projectId: p.id,
@@ -366,7 +368,7 @@ export const reportRoutes: FastifyPluginAsync = async (fastify) => {
           inProgress: map['IN_PROGRESS'] ?? 0,
           resolved: map['RESOLVED'] ?? 0,
           closed: map['CLOSED'] ?? 0,
-          total: Object.values(map).reduce((a, b) => a + b, 0),
+          total: Object.values(map).reduce((a: number, b: number) => a + b, 0),
         }
       })
     )
@@ -581,7 +583,8 @@ export const reportRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     const total = testCases.length
-    const executed = testCases.filter((tc) => {
+    type TcCoverageRow = { id: string; tcId: string; title: string; priority: string; executions: { status: string }[] }
+    const executed = (testCases as TcCoverageRow[]).filter((tc: TcCoverageRow) => {
       const s = tc.executions[0]?.status
       return s && s !== 'NOT_RUN'
     }).length

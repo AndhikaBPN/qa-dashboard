@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { ArrowLeft, Plus, X, Trash2, Search, Pencil, Link } from 'lucide-react'
@@ -300,6 +300,7 @@ function DeleteConfirmModal({ bug, onConfirm, onCancel, isPending }: {
 export default function BugListPage() {
   const { projectId } = useParams<{ projectId: string }>()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const qc = useQueryClient()
   const isViewer = useIsViewer()
 
@@ -365,6 +366,18 @@ export default function BugListPage() {
 
   function openCreate() { setEditBug(null); setFormOpen(true) }
   function openEdit(bug: Bug) { setSelectedBug(null); setEditBug(bug); setFormOpen(true) }
+
+  // Auto-select bug from ?bug=id query param
+  useEffect(() => {
+    const bugId = searchParams.get('bug')
+    if (bugId && bugs.length > 0) {
+      const target = bugs.find((b) => b.id === bugId)
+      if (target) {
+        setSelectedBug(target)
+        setSearchParams({}, { replace: true })
+      }
+    }
+  }, [bugs, searchParams, setSearchParams])
 
   useEffect(() => {
     if (selectedBug && bugs.length > 0) {
