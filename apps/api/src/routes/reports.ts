@@ -48,6 +48,7 @@ const TrendQuerySchema = z.object({
 })
 
 type StatusCountRow = { status: string; _count: { status: number } }
+type ProjectRow = { id: string; name: string; status: string; description?: string | null }
 
 export const reportRoutes: FastifyPluginAsync = async (fastify) => {
   const auth = { preHandler: [fastify.authenticate] }
@@ -117,7 +118,7 @@ export const reportRoutes: FastifyPluginAsync = async (fastify) => {
     })
 
     const stats = await Promise.all(
-      projects.map(async (p) => {
+      (projects as ProjectRow[]).map(async (p: ProjectRow) => {
         const [tcCount, tcInPeriod, bugCount, bugsInPeriod, openBugs] = await Promise.all([
           prisma.testCase.count({ where: { projectId: p.id } }),
           prisma.testCase.count({
@@ -349,7 +350,7 @@ export const reportRoutes: FastifyPluginAsync = async (fastify) => {
     })
 
     const summary = await Promise.all(
-      projects.map(async (p) => {
+      (projects as ProjectRow[]).map(async (p: ProjectRow) => {
         const counts = await prisma.bug.groupBy({
           by: ['status'],
           where: { projectId: p.id },
@@ -383,7 +384,7 @@ export const reportRoutes: FastifyPluginAsync = async (fastify) => {
     })
 
     const stats = await Promise.all(
-      projects.map(async (p) => {
+      (projects as ProjectRow[]).map(async (p: ProjectRow) => {
         const testCases = await prisma.testCase.findMany({
           where: { projectId: p.id },
           select: {
