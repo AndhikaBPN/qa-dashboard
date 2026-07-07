@@ -17,11 +17,12 @@ export const bugRoutes: FastifyPluginAsync = async (fastify) => {
     const query = BugQuerySchema.safeParse(request.query)
     if (!query.success) return badRequest(reply, query.error.message)
 
-    const { projectId, status, severity, priority, search, page, limit } = query.data
+    const { projectId, testCaseId, status, severity, priority, search, page, limit } = query.data
     const skip = (page - 1) * limit
 
     const where: Record<string, any> = {
       ...(projectId && { projectId }),
+      ...(testCaseId && { testCaseId }),
       ...(status && { status }),
       ...(severity && { severity }),
       ...(priority && { priority }),

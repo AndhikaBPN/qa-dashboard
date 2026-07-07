@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useIsViewer } from '@/stores/authStore'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
@@ -404,6 +405,10 @@ function CreateRunModal({
 
 // ─── Expanded Row ────────────────────────────────────────────────────────────
 
+interface BugItem {
+  id: string; bugId: string; title: string; status: string; severity: string
+}
+
 interface Step {
   order: number
   action: string
@@ -424,15 +429,25 @@ interface FullTestCase {
 }
 
 function ExpandedRow({
-  exec, colSpan, onClose,
+  exec, colSpan, onClose, projectId,
 }: {
   exec: Execution
   colSpan: number
   onClose: () => void
+  projectId: string
 }) {
+  const navigate = useNavigate()
   const qc = useQueryClient()
   const [actualResult, setActualResult] = useState(exec.actualResult ?? '')
   const [saved, setSaved] = useState(false)
+  const [showBugs, setShowBugs] = useState(false)
+
+  const { data: bugsData } = useQuery({
+    queryKey: ['tc-bugs', exec.testCase.id],
+    queryFn: () =>
+      api.get('/bugs', { params: { testCaseId: exec.testCase.id, limit: 50 } }).then((r) => r.data.data as BugItem[]),
+    enabled: showBugs,
+  })
 
   const { data: tc, isLoading } = useQuery<FullTestCase>({
     queryKey: ['test-case', exec.testCase.id],
@@ -546,6 +561,39 @@ function ExpandedRow({
               </div>
             </>
           )}
+          {/* Linked Bugs */}
+          <div>
+            <button
+              onClick={() => setShowBugs((v) => !v)}
+              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <Bug className="h-3.5 w-3.5" />
+              {showBugs ? 'Hide linked bugs' : 'Show linked bugs'}
+            </button>
+            {showBugs && (
+              <div className="mt-2 border rounded-md overflow-hidden">
+                {!bugsData ? (
+                  <div className="px-3 py-2 text-xs text-muted-foreground">Loading…</div>
+                ) : bugsData.length === 0 ? (
+                  <div className="px-3 py-2 text-xs text-muted-foreground">No bugs linked to this test case.</div>
+                ) : (
+                  bugsData.map((bug) => (
+                    <button
+                      key={bug.id}
+                      onClick={() => navigate(`/bugs/${projectId}?bug=${bug.id}`)}
+                      className="w-full flex items-center gap-3 px-3 py-2 text-sm hover:bg-muted/30 border-b last:border-0 text-left transition-colors"
+                    >
+                      <span className="font-mono text-xs text-muted-foreground w-20 shrink-0">{bug.bugId}</span>
+                      <span className="flex-1 truncate">{bug.title}</span>
+                      <span className="text-xs px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground shrink-0">{bug.severity}</span>
+                      <span className="text-xs px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground shrink-0">{bug.status}</span>
+                    </button>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+
           <button onClick={onClose} className="text-xs text-muted-foreground hover:text-foreground underline">
             Collapse
           </button>
@@ -558,7 +606,7 @@ function ExpandedRow({
 // ─── Suite Detail Panel ───────────────────────────────────────────────────────
 
 function SuiteDetailPanel({
-  runId, projectId: _projectId, onClose, onReportBug,
+  runId, projectId, onClose, onReportBug,
 }: {
   runId: string
   projectId: string
@@ -768,6 +816,7 @@ function SuiteDetailPanel({
                           exec={exec}
                           colSpan={!isViewer ? 7 : 6}
                           onClose={() => setExpandedExecId(null)}
+                          projectId={projectId}
                         />
                       )}
                     </>
