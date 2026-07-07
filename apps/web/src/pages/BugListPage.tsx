@@ -26,6 +26,7 @@ interface Bug {
   reporter: { id: string; name: string }
   testCaseId: string | null
   testCase: { id: string; tcId: string; title: string } | null
+  jiraLink?: string | null
   createdAt: string
   updatedAt: string
 }
@@ -187,6 +188,22 @@ function BugDetailPanel({ bug, onClose, onEdit, onDelete }: {
                 <span className="text-xs text-muted-foreground italic">Not linked</span>
               )}
             </div>
+
+            {/* Jira Link — full width */}
+            {bug.jiraLink && (
+              <div className="col-span-2">
+                <p className="text-xs text-muted-foreground mb-1">Jira Link</p>
+                <a
+                  href={bug.jiraLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline break-all"
+                >
+                  <Link className="h-3 w-3 shrink-0" />
+                  {bug.jiraLink}
+                </a>
+              </div>
+            )}
           </div>
 
           <div className="px-5 py-4 space-y-5">
