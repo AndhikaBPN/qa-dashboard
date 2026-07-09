@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useIsViewer } from '@/stores/authStore'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -43,6 +43,7 @@ interface Execution {
   id: string
   status: string
   actualResult: string | null
+  evidence: string[]
   testCase: { id: string; tcId: string; title: string; priority: string; type: string }
   executor: { id: string; name: string }
 }
@@ -439,8 +440,32 @@ function ExpandedRow({
   const navigate = useNavigate()
   const qc = useQueryClient()
   const [actualResult, setActualResult] = useState(exec.actualResult ?? '')
+  const [evidence, setEvidence] = useState<string[]>(exec.evidence ?? [])
+  const [lightbox, setLightbox] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
   const [showBugs, setShowBugs] = useState(false)
+  const actualResultRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const el = actualResultRef.current
+    if (!el) return
+    async function handlePaste(e: ClipboardEvent) {
+      const items = e.clipboardData?.items
+      if (!items) return
+      for (const item of Array.from(items)) {
+        if (item.type.startsWith('image/')) {
+          e.preventDefault()
+          const file = item.getAsFile()
+          if (!file) continue
+          const reader = new FileReader()
+          reader.onload = () => setEvidence((prev) => [...prev, reader.result as string])
+          reader.readAsDataURL(file)
+        }
+      }
+    }
+    el.addEventListener('paste', handlePaste)
+    return () => el.removeEventListener('paste', handlePaste)
+  }, [])
 
   const { data: bugsData } = useQuery({
     queryKey: ['tc-bugs', exec.testCase.id],
@@ -455,7 +480,7 @@ function ExpandedRow({
   })
 
   const saveActualMut = useMutation({
-    mutationFn: () => api.put(`/executions/${exec.id}`, { status: exec.status, actualResult }),
+    mutationFn: () => api.put(`/executions/${exec.id}`, { status: exec.status, actualResult, evidence }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['test-run'] })
       setSaved(true)
@@ -533,7 +558,7 @@ function ExpandedRow({
               )}
 
               {/* Actual Result */}
-              <div>
+              <div ref={actualResultRef}>
                 <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
                   Actual Result
                 </p>
@@ -542,7 +567,7 @@ function ExpandedRow({
                     value={actualResult}
                     onChange={(e) => setActualResult(e.target.value)}
                     rows={3}
-                    placeholder="Enter actual result…"
+                    placeholder="Enter actual result… or paste screenshot (Ctrl+V)"
                     className="flex-1 border rounded-md px-3 py-2 text-sm bg-background focus:outline-none focus:ring-1 focus:ring-primary resize-y min-h-[72px] max-h-[240px]"
                   />
                   <button
@@ -558,6 +583,57 @@ function ExpandedRow({
                     {saved ? 'Saved' : 'Save'}
                   </button>
                 </div>
+
+                {/* Evidence thumbnails */}
+                {evidence.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {evidence.map((src, i) => (
+                      <div key={i} className="relative group">
+                        <button onClick={() => setLightbox(src)} className="block">
+                          <img
+                            src={src}
+                            alt={`evidence ${i + 1}`}
+                            className="h-20 w-28 object-cover rounded-md border group-hover:opacity-80 transition-opacity"
+                          />
+                        </button>
+                        <button
+                          onClick={() => setEvidence((prev) => prev.filter((_, idx) => idx !== i))}
+                          className="absolute -top-1.5 -right-1.5 bg-destructive text-destructive-foreground rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Lightbox */}
+                {lightbox && (
+                  <div
+                    className="fixed inset-0 z-[70] flex items-center justify-center bg-black/80 p-4"
+                    onClick={() => setLightbox(null)}
+                  >
+                    <div className="relative max-w-[90vw] max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
+                      <img
+                        src={lightbox}
+                        alt="evidence preview"
+                        className="max-w-full max-h-[85vh] rounded-lg shadow-2xl object-contain"
+                      />
+                      <button
+                        onClick={() => setLightbox(null)}
+                        className="absolute -top-3 -right-3 bg-background border rounded-full p-1.5 shadow-lg hover:bg-muted"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {evidence.length === 0 && (
+                  <p className="text-xs text-muted-foreground mt-1.5">
+                    Paste screenshot with <kbd className="px-1 py-0.5 text-[10px] border rounded bg-muted font-mono">Ctrl+V</kbd> to attach evidence
+                  </p>
+                )}
               </div>
             </>
           )}

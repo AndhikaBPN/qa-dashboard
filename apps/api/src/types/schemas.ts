@@ -112,7 +112,7 @@ export const TestRunCreateSchema = z.object({
 export const ExecutionUpdateSchema = z.object({
   status: ExecutionStatusEnum,
   actualResult: z.string().optional(),
-  evidence: z.array(z.string().url()).optional(),
+  evidence: z.array(z.string()).optional(),
 })
 
 export const BulkExecutionUpdateSchema = z.object({
