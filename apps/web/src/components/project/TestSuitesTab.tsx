@@ -441,6 +441,7 @@ function ExpandedRow({
   const qc = useQueryClient()
   const [actualResult, setActualResult] = useState(exec.actualResult ?? '')
   const [evidence, setEvidence] = useState<string[]>(exec.evidence ?? [])
+  const [lightbox, setLightbox] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
   const [showBugs, setShowBugs] = useState(false)
   const actualResultRef = useRef<HTMLDivElement>(null)
@@ -588,12 +589,13 @@ function ExpandedRow({
                   <div className="flex flex-wrap gap-2 mt-2">
                     {evidence.map((src, i) => (
                       <div key={i} className="relative group">
-                        <img
-                          src={src}
-                          alt={`evidence ${i + 1}`}
-                          className="h-20 w-28 object-cover rounded-md border group-hover:opacity-80 transition-opacity cursor-pointer"
-                          onClick={() => window.open(src, '_blank')}
-                        />
+                        <button onClick={() => setLightbox(src)} className="block">
+                          <img
+                            src={src}
+                            alt={`evidence ${i + 1}`}
+                            className="h-20 w-28 object-cover rounded-md border group-hover:opacity-80 transition-opacity"
+                          />
+                        </button>
                         <button
                           onClick={() => setEvidence((prev) => prev.filter((_, idx) => idx !== i))}
                           className="absolute -top-1.5 -right-1.5 bg-destructive text-destructive-foreground rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
@@ -602,6 +604,28 @@ function ExpandedRow({
                         </button>
                       </div>
                     ))}
+                  </div>
+                )}
+
+                {/* Lightbox */}
+                {lightbox && (
+                  <div
+                    className="fixed inset-0 z-[70] flex items-center justify-center bg-black/80 p-4"
+                    onClick={() => setLightbox(null)}
+                  >
+                    <div className="relative max-w-[90vw] max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
+                      <img
+                        src={lightbox}
+                        alt="evidence preview"
+                        className="max-w-full max-h-[85vh] rounded-lg shadow-2xl object-contain"
+                      />
+                      <button
+                        onClick={() => setLightbox(null)}
+                        className="absolute -top-3 -right-3 bg-background border rounded-full p-1.5 shadow-lg hover:bg-muted"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
                   </div>
                 )}
 
