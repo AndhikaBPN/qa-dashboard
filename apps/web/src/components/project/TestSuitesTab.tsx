@@ -12,6 +12,7 @@ import {
   Plus, Trash2, X,
   Search,
   Bug, ChevronRight, ChevronDown, Folder, FolderOpen, Pencil, Save, Share2, Copy, Check, Link2Off, ExternalLink,
+  Paperclip, FileText, Film, Loader2,
 } from 'lucide-react'
 import BugFormModal from '@/components/bug/BugFormModal'
 
@@ -441,10 +442,65 @@ function ExpandedRow({
   const qc = useQueryClient()
   const [actualResult, setActualResult] = useState(exec.actualResult ?? '')
   const [evidence, setEvidence] = useState<string[]>(exec.evidence ?? [])
-  const [lightbox, setLightbox] = useState<string | null>(null)
+  const [lightbox, setLightbox] = useState<{ src: string; type: 'image' | 'video'; name: string } | null>(null)
+  const [uploading, setUploading] = useState(false)
   const [saved, setSaved] = useState(false)
   const [showBugs, setShowBugs] = useState(false)
   const actualResultRef = useRef<HTMLDivElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  async function handleFileUpload(files: FileList | null) {
+    if (!files || files.length === 0) return
+    setUploading(true)
+    try {
+      for (const file of Array.from(files)) {
+        const fd = new FormData()
+        fd.append('file', file)
+        const res = await api.post('/uploads', fd, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        })
+        // store as JSON so we keep original filename alongside URL
+        setEvidence((prev) => [...prev, JSON.stringify({ url: res.data.url, name: file.name })])
+      }
+    } finally {
+      setUploading(false)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+  }
+
+  async function downloadFile(url: string, name: string) {
+    try {
+      const res = await fetch(url)
+      const blob = await res.blob()
+      const blobUrl = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = blobUrl
+      a.download = name
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(blobUrl)
+    } catch {
+      window.open(url, '_blank')
+    }
+  }
+
+  function parseEvidence(src: string): { url: string; name: string } {
+    try {
+      const parsed = JSON.parse(src)
+      if (parsed.url) return parsed
+    } catch { /* raw string = data URL or legacy URL */ }
+    return { url: src, name: src.split('/').pop()?.split('?')[0] ?? 'file' }
+  }
+
+  function getFileStyle(name: string): { bg: string; icon: string; label: string } {
+    const ext = name.split('.').pop()?.toLowerCase() ?? ''
+    if (['pdf'].includes(ext)) return { bg: 'bg-red-900/40 border-red-800/60', icon: 'text-red-400', label: 'PDF' }
+    if (['xls', 'xlsx', 'csv'].includes(ext)) return { bg: 'bg-green-900/40 border-green-800/60', icon: 'text-green-400', label: 'SHEET' }
+    if (['doc', 'docx'].includes(ext)) return { bg: 'bg-blue-900/40 border-blue-800/60', icon: 'text-blue-400', label: 'DOC' }
+    if (['txt', 'md'].includes(ext)) return { bg: 'bg-slate-800/60 border-slate-700', icon: 'text-slate-400', label: 'TXT' }
+    return { bg: 'bg-muted/50 border-border', icon: 'text-muted-foreground', label: ext.toUpperCase() || 'FILE' }
+  }
 
   useEffect(() => {
     const el = actualResultRef.current
@@ -587,23 +643,53 @@ function ExpandedRow({
                 {/* Evidence thumbnails */}
                 {evidence.length > 0 && (
                   <div className="flex flex-wrap gap-2 mt-2">
-                    {evidence.map((src, i) => (
-                      <div key={i} className="relative group">
-                        <button onClick={() => setLightbox(src)} className="block">
-                          <img
-                            src={src}
-                            alt={`evidence ${i + 1}`}
-                            className="h-20 w-28 object-cover rounded-md border group-hover:opacity-80 transition-opacity"
-                          />
-                        </button>
-                        <button
-                          onClick={() => setEvidence((prev) => prev.filter((_, idx) => idx !== i))}
-                          className="absolute -top-1.5 -right-1.5 bg-destructive text-destructive-foreground rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </div>
-                    ))}
+                    {evidence.map((raw, i) => {
+                      const { url, name } = parseEvidence(raw)
+                      const isImage = url.startsWith('data:image/') || /\.(png|jpe?g|gif|webp|svg)(\?|$)/i.test(name)
+                      const isVideo = url.startsWith('data:video/') || /\.(mp4|webm|mov|avi)(\?|$)/i.test(name)
+                      const fileStyle = getFileStyle(name)
+                      return (
+                        <div key={i} className="relative group">
+                          {isImage ? (
+                            <button onClick={() => setLightbox({ src: url, type: 'image', name })} className="block" title={name}>
+                              <img
+                                src={url}
+                                alt={name}
+                                className="h-20 w-28 object-cover rounded-md border group-hover:opacity-80 transition-opacity"
+                              />
+                              <span className="absolute bottom-0 left-0 right-0 text-[10px] text-center bg-black/50 text-white px-1 py-0.5 rounded-b-md truncate opacity-0 group-hover:opacity-100 transition-opacity">
+                                {name}
+                              </span>
+                            </button>
+                          ) : isVideo ? (
+                            <button onClick={() => setLightbox({ src: url, type: 'video', name })} title={name}
+                              className="h-20 w-36 rounded-md border overflow-hidden bg-black flex flex-col items-center justify-center hover:opacity-80 transition-opacity"
+                            >
+                              <Film className="h-6 w-6 text-purple-400 mb-1" />
+                              <span className="text-[10px] text-slate-300 px-1 text-center truncate w-full">{name}</span>
+                            </button>
+                          ) : (
+                            <a
+                              href={url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              title={name}
+                              className={`flex flex-col items-center justify-center gap-1.5 h-20 w-36 rounded-md border px-2 transition-opacity hover:opacity-80 ${fileStyle.bg}`}
+                            >
+                              <FileText className={`h-6 w-6 shrink-0 ${fileStyle.icon}`} />
+                              <span className={`text-[10px] font-medium ${fileStyle.icon}`}>{fileStyle.label}</span>
+                              <span className="text-[10px] text-muted-foreground truncate w-full text-center px-1">{name}</span>
+                            </a>
+                          )}
+                          <button
+                            onClick={() => setEvidence((prev) => prev.filter((_, idx) => idx !== i))}
+                            className="absolute -top-1.5 -right-1.5 bg-destructive text-destructive-foreground rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity z-10"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </div>
+                      )
+                    })}
                   </div>
                 )}
 
@@ -613,27 +699,72 @@ function ExpandedRow({
                     className="fixed inset-0 z-[70] flex items-center justify-center bg-black/80 p-4"
                     onClick={() => setLightbox(null)}
                   >
-                    <div className="relative max-w-[90vw] max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
-                      <img
-                        src={lightbox}
-                        alt="evidence preview"
-                        className="max-w-full max-h-[85vh] rounded-lg shadow-2xl object-contain"
-                      />
-                      <button
-                        onClick={() => setLightbox(null)}
-                        className="absolute -top-3 -right-3 bg-background border rounded-full p-1.5 shadow-lg hover:bg-muted"
+                    {lightbox.type === 'video' ? (
+                      <div
+                        className="relative flex flex-col items-center gap-3"
+                        style={{ width: '640px', maxWidth: '90vw' }}
+                        onClick={(e) => e.stopPropagation()}
                       >
-                        <X className="h-4 w-4" />
-                      </button>
-                    </div>
+                        <button
+                          onClick={() => setLightbox(null)}
+                          className="absolute -top-3 -right-3 z-10 bg-background border rounded-full p-1.5 shadow-lg hover:bg-muted"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                        <video
+                          src={lightbox.src}
+                          controls
+                          autoPlay
+                          className="w-full rounded-lg shadow-2xl bg-black"
+                          style={{ aspectRatio: '16/9' }}
+                        />
+                        <button
+                          onClick={(e) => { e.stopPropagation(); downloadFile(lightbox.src, lightbox.name) }}
+                          className="text-xs text-slate-400 hover:text-white underline"
+                        >
+                          Can't play inline? Download file
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="relative max-w-[90vw] max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
+                        <img
+                          src={lightbox.src}
+                          alt="evidence preview"
+                          className="max-w-full max-h-[85vh] rounded-lg shadow-2xl object-contain"
+                        />
+                        <button
+                          onClick={() => setLightbox(null)}
+                          className="absolute -top-3 -right-3 bg-background border rounded-full p-1.5 shadow-lg hover:bg-muted"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
 
-                {evidence.length === 0 && (
-                  <p className="text-xs text-muted-foreground mt-1.5">
-                    Paste screenshot with <kbd className="px-1 py-0.5 text-[10px] border rounded bg-muted font-mono">Ctrl+V</kbd> to attach evidence
-                  </p>
-                )}
+                {/* Upload button + hint */}
+                <div className="flex items-center gap-3 mt-1.5">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    accept="image/*,video/*,.pdf,.doc,.docx,.xlsx,.csv,.txt"
+                    className="hidden"
+                    onChange={(e) => handleFileUpload(e.target.files)}
+                  />
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploading}
+                    className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border rounded-md px-2.5 py-1 hover:bg-muted transition-colors disabled:opacity-50"
+                  >
+                    {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Paperclip className="h-3.5 w-3.5" />}
+                    {uploading ? 'Uploading…' : 'Attach file'}
+                  </button>
+                  <span className="text-xs text-muted-foreground">
+                    or paste screenshot <kbd className="px-1 py-0.5 text-[10px] border rounded bg-muted font-mono">Ctrl+V</kbd>
+                  </span>
+                </div>
               </div>
             </>
           )}
