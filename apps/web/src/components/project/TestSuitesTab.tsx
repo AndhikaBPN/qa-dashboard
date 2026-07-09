@@ -456,14 +456,10 @@ function ExpandedRow({
       for (const file of Array.from(files)) {
         const fd = new FormData()
         fd.append('file', file)
-        const res = await fetch(`${import.meta.env.VITE_API_URL}/uploads`, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` },
-          body: fd,
+        const res = await api.post('/uploads', fd, {
+          headers: { 'Content-Type': 'multipart/form-data' },
         })
-        if (!res.ok) throw new Error('Upload failed')
-        const json = await res.json()
-        setEvidence((prev) => [...prev, json.url])
+        setEvidence((prev) => [...prev, res.data.url])
       }
     } finally {
       setUploading(false)
