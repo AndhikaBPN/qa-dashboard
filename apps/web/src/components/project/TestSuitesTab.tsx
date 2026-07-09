@@ -682,39 +682,49 @@ function ExpandedRow({
                     className="fixed inset-0 z-[70] flex items-center justify-center bg-black/80 p-4"
                     onClick={() => setLightbox(null)}
                   >
-                    <div className="relative max-w-[90vw] max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
-                      {lightbox.type === 'video' ? (
-                        <div className="flex flex-col items-center gap-3">
-                          <video
-                            src={lightbox.src}
-                            controls
-                            autoPlay
-                            className="max-w-[80vw] max-h-[75vh] rounded-lg shadow-2xl bg-black"
-                            style={{ minWidth: 480, minHeight: 270 }}
-                          />
-                          <a
-                            href={lightbox.src}
-                            download
-                            className="text-xs text-muted-foreground hover:text-foreground underline"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            Can't play? Download file
-                          </a>
-                        </div>
-                      ) : (
+                    {lightbox.type === 'video' ? (
+                      <div
+                        className="relative flex flex-col items-center gap-3"
+                        style={{ width: '640px', maxWidth: '90vw' }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <button
+                          onClick={() => setLightbox(null)}
+                          className="absolute -top-3 -right-3 z-10 bg-background border rounded-full p-1.5 shadow-lg hover:bg-muted"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                        <video
+                          src={lightbox.src}
+                          controls
+                          autoPlay
+                          className="w-full rounded-lg shadow-2xl bg-black"
+                          style={{ aspectRatio: '16/9' }}
+                        />
+                        <a
+                          href={lightbox.src}
+                          download
+                          className="text-xs text-slate-400 hover:text-white underline"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          Can't play inline? Download file
+                        </a>
+                      </div>
+                    ) : (
+                      <div className="relative max-w-[90vw] max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
                         <img
                           src={lightbox.src}
                           alt="evidence preview"
                           className="max-w-full max-h-[85vh] rounded-lg shadow-2xl object-contain"
                         />
-                      )}
-                      <button
-                        onClick={() => setLightbox(null)}
-                        className="absolute -top-3 -right-3 bg-background border rounded-full p-1.5 shadow-lg hover:bg-muted"
-                      >
-                        <X className="h-4 w-4" />
-                      </button>
-                    </div>
+                        <button
+                          onClick={() => setLightbox(null)}
+                          className="absolute -top-3 -right-3 bg-background border rounded-full p-1.5 shadow-lg hover:bg-muted"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
 
