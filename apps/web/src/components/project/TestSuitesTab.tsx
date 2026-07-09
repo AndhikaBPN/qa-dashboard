@@ -12,6 +12,7 @@ import {
   Plus, Trash2, X,
   Search,
   Bug, ChevronRight, ChevronDown, Folder, FolderOpen, Pencil, Save, Share2, Copy, Check, Link2Off, ExternalLink,
+  Paperclip, FileText, Film, Loader2,
 } from 'lucide-react'
 import BugFormModal from '@/components/bug/BugFormModal'
 
@@ -442,9 +443,33 @@ function ExpandedRow({
   const [actualResult, setActualResult] = useState(exec.actualResult ?? '')
   const [evidence, setEvidence] = useState<string[]>(exec.evidence ?? [])
   const [lightbox, setLightbox] = useState<string | null>(null)
+  const [uploading, setUploading] = useState(false)
   const [saved, setSaved] = useState(false)
   const [showBugs, setShowBugs] = useState(false)
   const actualResultRef = useRef<HTMLDivElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  async function handleFileUpload(files: FileList | null) {
+    if (!files || files.length === 0) return
+    setUploading(true)
+    try {
+      for (const file of Array.from(files)) {
+        const fd = new FormData()
+        fd.append('file', file)
+        const res = await fetch(`${import.meta.env.VITE_API_URL}/uploads`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` },
+          body: fd,
+        })
+        if (!res.ok) throw new Error('Upload failed')
+        const json = await res.json()
+        setEvidence((prev) => [...prev, json.url])
+      }
+    } finally {
+      setUploading(false)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+  }
 
   useEffect(() => {
     const el = actualResultRef.current
@@ -587,23 +612,48 @@ function ExpandedRow({
                 {/* Evidence thumbnails */}
                 {evidence.length > 0 && (
                   <div className="flex flex-wrap gap-2 mt-2">
-                    {evidence.map((src, i) => (
-                      <div key={i} className="relative group">
-                        <button onClick={() => setLightbox(src)} className="block">
-                          <img
-                            src={src}
-                            alt={`evidence ${i + 1}`}
-                            className="h-20 w-28 object-cover rounded-md border group-hover:opacity-80 transition-opacity"
-                          />
-                        </button>
-                        <button
-                          onClick={() => setEvidence((prev) => prev.filter((_, idx) => idx !== i))}
-                          className="absolute -top-1.5 -right-1.5 bg-destructive text-destructive-foreground rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </div>
-                    ))}
+                    {evidence.map((src, i) => {
+                      const isImage = src.startsWith('data:image/') || /\.(png|jpe?g|gif|webp|svg)(\?|$)/i.test(src)
+                      const isVideo = src.startsWith('data:video/') || /\.(mp4|webm|mov|avi)(\?|$)/i.test(src)
+                      const filename = src.split('/').pop()?.split('?')[0] ?? `file-${i + 1}`
+                      return (
+                        <div key={i} className="relative group">
+                          {isImage ? (
+                            <button onClick={() => setLightbox(src)} className="block">
+                              <img
+                                src={src}
+                                alt={`evidence ${i + 1}`}
+                                className="h-20 w-28 object-cover rounded-md border group-hover:opacity-80 transition-opacity"
+                              />
+                            </button>
+                          ) : isVideo ? (
+                            <div className="h-20 w-36 rounded-md border overflow-hidden bg-black flex items-center justify-center relative">
+                              <video src={src} className="h-full w-full object-cover" muted />
+                              <div className="absolute inset-0 flex items-center justify-center">
+                                <Film className="h-6 w-6 text-white drop-shadow" />
+                              </div>
+                              <a href={src} target="_blank" rel="noopener noreferrer" className="absolute inset-0" />
+                            </div>
+                          ) : (
+                            <a
+                              href={src}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center gap-2 h-20 w-36 rounded-md border px-3 bg-muted/30 hover:bg-muted/60 transition-colors"
+                            >
+                              <FileText className="h-6 w-6 text-muted-foreground shrink-0" />
+                              <span className="text-xs text-muted-foreground truncate">{filename}</span>
+                            </a>
+                          )}
+                          <button
+                            onClick={() => setEvidence((prev) => prev.filter((_, idx) => idx !== i))}
+                            className="absolute -top-1.5 -right-1.5 bg-destructive text-destructive-foreground rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity z-10"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </div>
+                      )
+                    })}
                   </div>
                 )}
 
@@ -629,11 +679,28 @@ function ExpandedRow({
                   </div>
                 )}
 
-                {evidence.length === 0 && (
-                  <p className="text-xs text-muted-foreground mt-1.5">
-                    Paste screenshot with <kbd className="px-1 py-0.5 text-[10px] border rounded bg-muted font-mono">Ctrl+V</kbd> to attach evidence
-                  </p>
-                )}
+                {/* Upload button + hint */}
+                <div className="flex items-center gap-3 mt-1.5">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    accept="image/*,video/*,.pdf,.doc,.docx,.xlsx,.csv,.txt"
+                    className="hidden"
+                    onChange={(e) => handleFileUpload(e.target.files)}
+                  />
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploading}
+                    className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border rounded-md px-2.5 py-1 hover:bg-muted transition-colors disabled:opacity-50"
+                  >
+                    {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Paperclip className="h-3.5 w-3.5" />}
+                    {uploading ? 'Uploading…' : 'Attach file'}
+                  </button>
+                  <span className="text-xs text-muted-foreground">
+                    or paste screenshot <kbd className="px-1 py-0.5 text-[10px] border rounded bg-muted font-mono">Ctrl+V</kbd>
+                  </span>
+                </div>
               </div>
             </>
           )}

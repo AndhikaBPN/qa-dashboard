@@ -1,7 +1,10 @@
 import Fastify from 'fastify'
 import cors from '@fastify/cors'
 import multipart from '@fastify/multipart'
+import staticFiles from '@fastify/static'
 import jwt from 'jsonwebtoken'
+import { mkdirSync } from 'fs'
+import { join } from 'path'
 import authPlugin, { type JwtPayload } from './middleware/auth.js'
 import { authRoutes } from './routes/auth.js'
 import { projectRoutes } from './routes/projects.js'
@@ -14,6 +17,7 @@ import { executionRoutes } from './routes/executions.js'
 import { reportRoutes } from './routes/reports.js'
 import { jiraRoutes } from './routes/jira.js'
 import { sharedRoutes } from './routes/shared.js'
+import { uploadRoutes } from './routes/uploads.js'
 
 export async function buildApp() {
   const app = Fastify({ logger: true, bodyLimit: 20 * 1024 * 1024 })
@@ -22,7 +26,11 @@ export async function buildApp() {
     origin: process.env.CORS_ORIGIN ?? 'http://localhost:5173',
     credentials: true,
   })
-  await app.register(multipart, { limits: { fileSize: 5 * 1024 * 1024 } })
+  await app.register(multipart, { limits: { fileSize: 100 * 1024 * 1024 } })
+
+  const uploadDir = process.env.UPLOAD_DIR ?? join(process.cwd(), 'uploads')
+  mkdirSync(uploadDir, { recursive: true })
+  await app.register(staticFiles, { root: uploadDir, prefix: '/uploads/' })
   await app.register(authPlugin)
 
   app.setErrorHandler((error, _request, reply) => {
@@ -68,6 +76,7 @@ export async function buildApp() {
   app.register(reportRoutes,    { prefix: `${PREFIX}/reports` })
   app.register(jiraRoutes,      { prefix: `${PREFIX}/jira` })
   app.register(sharedRoutes,    { prefix: `${PREFIX}/shared` })
+  app.register(uploadRoutes,    { prefix: `${PREFIX}/uploads` })
 
   app.get('/health', async () => ({ status: 'ok', ts: new Date().toISOString() }))
 
