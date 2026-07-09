@@ -442,7 +442,7 @@ function ExpandedRow({
   const qc = useQueryClient()
   const [actualResult, setActualResult] = useState(exec.actualResult ?? '')
   const [evidence, setEvidence] = useState<string[]>(exec.evidence ?? [])
-  const [lightbox, setLightbox] = useState<string | null>(null)
+  const [lightbox, setLightbox] = useState<{ src: string; type: 'image' | 'video' } | null>(null)
   const [uploading, setUploading] = useState(false)
   const [saved, setSaved] = useState(false)
   const [showBugs, setShowBugs] = useState(false)
@@ -634,7 +634,7 @@ function ExpandedRow({
                       return (
                         <div key={i} className="relative group">
                           {isImage ? (
-                            <button onClick={() => setLightbox(url)} className="block" title={name}>
+                            <button onClick={() => setLightbox({ src: url, type: 'image' })} className="block" title={name}>
                               <img
                                 src={url}
                                 alt={name}
@@ -645,12 +645,12 @@ function ExpandedRow({
                               </span>
                             </button>
                           ) : isVideo ? (
-                            <a href={url} target="_blank" rel="noopener noreferrer" title={name}
-                              className="h-20 w-36 rounded-md border overflow-hidden bg-black flex flex-col items-center justify-center relative hover:opacity-80 transition-opacity"
+                            <button onClick={() => setLightbox({ src: url, type: 'video' })} title={name}
+                              className="h-20 w-36 rounded-md border overflow-hidden bg-black flex flex-col items-center justify-center hover:opacity-80 transition-opacity"
                             >
                               <Film className="h-6 w-6 text-purple-400 mb-1" />
                               <span className="text-[10px] text-slate-300 px-1 text-center truncate w-full">{name}</span>
-                            </a>
+                            </button>
                           ) : (
                             <a
                               href={url}
@@ -683,11 +683,20 @@ function ExpandedRow({
                     onClick={() => setLightbox(null)}
                   >
                     <div className="relative max-w-[90vw] max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
-                      <img
-                        src={lightbox}
-                        alt="evidence preview"
-                        className="max-w-full max-h-[85vh] rounded-lg shadow-2xl object-contain"
-                      />
+                      {lightbox.type === 'video' ? (
+                        <video
+                          src={lightbox.src}
+                          controls
+                          autoPlay
+                          className="max-w-full max-h-[85vh] rounded-lg shadow-2xl"
+                        />
+                      ) : (
+                        <img
+                          src={lightbox.src}
+                          alt="evidence preview"
+                          className="max-w-full max-h-[85vh] rounded-lg shadow-2xl object-contain"
+                        />
+                      )}
                       <button
                         onClick={() => setLightbox(null)}
                         className="absolute -top-3 -right-3 bg-background border rounded-full p-1.5 shadow-lg hover:bg-muted"
