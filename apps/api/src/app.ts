@@ -30,7 +30,13 @@ export async function buildApp() {
 
   const uploadDir = process.env.UPLOAD_DIR ?? join(process.cwd(), 'uploads')
   mkdirSync(uploadDir, { recursive: true })
-  await app.register(staticFiles, { root: uploadDir, prefix: '/uploads/' })
+  await app.register(staticFiles, {
+    root: uploadDir,
+    prefix: '/uploads/',
+    setHeaders: (res, path) => {
+      if (path.endsWith('.mov')) res.setHeader('Content-Type', 'video/mp4')
+    },
+  })
   await app.register(authPlugin)
 
   app.setErrorHandler((error, _request, reply) => {

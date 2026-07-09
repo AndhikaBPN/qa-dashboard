@@ -684,12 +684,23 @@ function ExpandedRow({
                   >
                     <div className="relative max-w-[90vw] max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
                       {lightbox.type === 'video' ? (
-                        <video
-                          src={lightbox.src}
-                          controls
-                          autoPlay
-                          className="max-w-full max-h-[85vh] rounded-lg shadow-2xl"
-                        />
+                        <div className="flex flex-col items-center gap-3">
+                          <video
+                            src={lightbox.src}
+                            controls
+                            autoPlay
+                            className="max-w-[80vw] max-h-[75vh] rounded-lg shadow-2xl bg-black"
+                            style={{ minWidth: 480, minHeight: 270 }}
+                          />
+                          <a
+                            href={lightbox.src}
+                            download
+                            className="text-xs text-muted-foreground hover:text-foreground underline"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            Can't play? Download file
+                          </a>
+                        </div>
                       ) : (
                         <img
                           src={lightbox.src}
