@@ -442,7 +442,7 @@ function ExpandedRow({
   const qc = useQueryClient()
   const [actualResult, setActualResult] = useState(exec.actualResult ?? '')
   const [evidence, setEvidence] = useState<string[]>(exec.evidence ?? [])
-  const [lightbox, setLightbox] = useState<{ src: string; type: 'image' | 'video' } | null>(null)
+  const [lightbox, setLightbox] = useState<{ src: string; type: 'image' | 'video'; name: string } | null>(null)
   const [uploading, setUploading] = useState(false)
   const [saved, setSaved] = useState(false)
   const [showBugs, setShowBugs] = useState(false)
@@ -465,6 +465,23 @@ function ExpandedRow({
     } finally {
       setUploading(false)
       if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+  }
+
+  async function downloadFile(url: string, name: string) {
+    try {
+      const res = await fetch(url)
+      const blob = await res.blob()
+      const blobUrl = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = blobUrl
+      a.download = name
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(blobUrl)
+    } catch {
+      window.open(url, '_blank')
     }
   }
 
@@ -634,7 +651,7 @@ function ExpandedRow({
                       return (
                         <div key={i} className="relative group">
                           {isImage ? (
-                            <button onClick={() => setLightbox({ src: url, type: 'image' })} className="block" title={name}>
+                            <button onClick={() => setLightbox({ src: url, type: 'image', name })} className="block" title={name}>
                               <img
                                 src={url}
                                 alt={name}
@@ -645,7 +662,7 @@ function ExpandedRow({
                               </span>
                             </button>
                           ) : isVideo ? (
-                            <button onClick={() => setLightbox({ src: url, type: 'video' })} title={name}
+                            <button onClick={() => setLightbox({ src: url, type: 'video', name })} title={name}
                               className="h-20 w-36 rounded-md border overflow-hidden bg-black flex flex-col items-center justify-center hover:opacity-80 transition-opacity"
                             >
                               <Film className="h-6 w-6 text-purple-400 mb-1" />
@@ -701,14 +718,12 @@ function ExpandedRow({
                           className="w-full rounded-lg shadow-2xl bg-black"
                           style={{ aspectRatio: '16/9' }}
                         />
-                        <a
-                          href={lightbox.src}
-                          download
+                        <button
+                          onClick={(e) => { e.stopPropagation(); downloadFile(lightbox.src, lightbox.name) }}
                           className="text-xs text-slate-400 hover:text-white underline"
-                          onClick={(e) => e.stopPropagation()}
                         >
                           Can't play inline? Download file
-                        </a>
+                        </button>
                       </div>
                     ) : (
                       <div className="relative max-w-[90vw] max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
