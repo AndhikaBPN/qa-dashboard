@@ -459,12 +459,30 @@ function ExpandedRow({
         const res = await api.post('/uploads', fd, {
           headers: { 'Content-Type': 'multipart/form-data' },
         })
-        setEvidence((prev) => [...prev, res.data.url])
+        // store as JSON so we keep original filename alongside URL
+        setEvidence((prev) => [...prev, JSON.stringify({ url: res.data.url, name: file.name })])
       }
     } finally {
       setUploading(false)
       if (fileInputRef.current) fileInputRef.current.value = ''
     }
+  }
+
+  function parseEvidence(src: string): { url: string; name: string } {
+    try {
+      const parsed = JSON.parse(src)
+      if (parsed.url) return parsed
+    } catch { /* raw string = data URL or legacy URL */ }
+    return { url: src, name: src.split('/').pop()?.split('?')[0] ?? 'file' }
+  }
+
+  function getFileStyle(name: string): { bg: string; icon: string; label: string } {
+    const ext = name.split('.').pop()?.toLowerCase() ?? ''
+    if (['pdf'].includes(ext)) return { bg: 'bg-red-900/40 border-red-800/60', icon: 'text-red-400', label: 'PDF' }
+    if (['xls', 'xlsx', 'csv'].includes(ext)) return { bg: 'bg-green-900/40 border-green-800/60', icon: 'text-green-400', label: 'SHEET' }
+    if (['doc', 'docx'].includes(ext)) return { bg: 'bg-blue-900/40 border-blue-800/60', icon: 'text-blue-400', label: 'DOC' }
+    if (['txt', 'md'].includes(ext)) return { bg: 'bg-slate-800/60 border-slate-700', icon: 'text-slate-400', label: 'TXT' }
+    return { bg: 'bg-muted/50 border-border', icon: 'text-muted-foreground', label: ext.toUpperCase() || 'FILE' }
   }
 
   useEffect(() => {
@@ -608,37 +626,42 @@ function ExpandedRow({
                 {/* Evidence thumbnails */}
                 {evidence.length > 0 && (
                   <div className="flex flex-wrap gap-2 mt-2">
-                    {evidence.map((src, i) => {
-                      const isImage = src.startsWith('data:image/') || /\.(png|jpe?g|gif|webp|svg)(\?|$)/i.test(src)
-                      const isVideo = src.startsWith('data:video/') || /\.(mp4|webm|mov|avi)(\?|$)/i.test(src)
-                      const filename = src.split('/').pop()?.split('?')[0] ?? `file-${i + 1}`
+                    {evidence.map((raw, i) => {
+                      const { url, name } = parseEvidence(raw)
+                      const isImage = url.startsWith('data:image/') || /\.(png|jpe?g|gif|webp|svg)(\?|$)/i.test(name)
+                      const isVideo = url.startsWith('data:video/') || /\.(mp4|webm|mov|avi)(\?|$)/i.test(name)
+                      const fileStyle = getFileStyle(name)
                       return (
                         <div key={i} className="relative group">
                           {isImage ? (
-                            <button onClick={() => setLightbox(src)} className="block">
+                            <button onClick={() => setLightbox(url)} className="block" title={name}>
                               <img
-                                src={src}
-                                alt={`evidence ${i + 1}`}
+                                src={url}
+                                alt={name}
                                 className="h-20 w-28 object-cover rounded-md border group-hover:opacity-80 transition-opacity"
                               />
+                              <span className="absolute bottom-0 left-0 right-0 text-[10px] text-center bg-black/50 text-white px-1 py-0.5 rounded-b-md truncate opacity-0 group-hover:opacity-100 transition-opacity">
+                                {name}
+                              </span>
                             </button>
                           ) : isVideo ? (
-                            <div className="h-20 w-36 rounded-md border overflow-hidden bg-black flex items-center justify-center relative">
-                              <video src={src} className="h-full w-full object-cover" muted />
-                              <div className="absolute inset-0 flex items-center justify-center">
-                                <Film className="h-6 w-6 text-white drop-shadow" />
-                              </div>
-                              <a href={src} target="_blank" rel="noopener noreferrer" className="absolute inset-0" />
-                            </div>
+                            <a href={url} target="_blank" rel="noopener noreferrer" title={name}
+                              className="h-20 w-36 rounded-md border overflow-hidden bg-black flex flex-col items-center justify-center relative hover:opacity-80 transition-opacity"
+                            >
+                              <Film className="h-6 w-6 text-purple-400 mb-1" />
+                              <span className="text-[10px] text-slate-300 px-1 text-center truncate w-full">{name}</span>
+                            </a>
                           ) : (
                             <a
-                              href={src}
+                              href={url}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="flex items-center gap-2 h-20 w-36 rounded-md border px-3 bg-muted/30 hover:bg-muted/60 transition-colors"
+                              title={name}
+                              className={`flex flex-col items-center justify-center gap-1.5 h-20 w-36 rounded-md border px-2 transition-opacity hover:opacity-80 ${fileStyle.bg}`}
                             >
-                              <FileText className="h-6 w-6 text-muted-foreground shrink-0" />
-                              <span className="text-xs text-muted-foreground truncate">{filename}</span>
+                              <FileText className={`h-6 w-6 shrink-0 ${fileStyle.icon}`} />
+                              <span className={`text-[10px] font-medium ${fileStyle.icon}`}>{fileStyle.label}</span>
+                              <span className="text-[10px] text-muted-foreground truncate w-full text-center px-1">{name}</span>
                             </a>
                           )}
                           <button
