@@ -85,16 +85,22 @@ enum BugType {
 }
 
 model Project {
-  id          String        @id @default(cuid())
-  name        String
-  description String?
-  status      ProjectStatus @default(ACTIVE)
-  testSuites  TestSuite[]
-  testCases   TestCase[]
-  testRuns    TestRun[]
-  bugs        Bug[]
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  id           String        @id @default(cuid())
+  name         String
+  description  String?
+  status       ProjectStatus @default(ACTIVE)
+  abbreviation String?       @unique
+  testSuites   TestSuite[]
+  testCases    TestCase[]
+  testRuns     TestRun[]
+  bugs         Bug[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+}
+
+model ProjectCounter {
+  id  String @id
+  seq Int    @default(0)
 }
 
 model User {

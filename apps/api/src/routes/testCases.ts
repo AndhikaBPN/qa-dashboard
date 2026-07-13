@@ -41,11 +41,44 @@ function parseStepsFromCell(stepsRaw: string, testDataRaw: string) {
   return [{ order: 1, action: stepsRaw.trim(), testData: testDataRaw.trim(), expectedStepResult: '' }]
 }
 
-async function generateTcId(): Promise<string> {
-  const last = await prisma.testCase.findFirst({ orderBy: { tcId: 'desc' } })
-  if (!last) return 'TC-001'
-  const num = parseInt(last.tcId.replace('TC-', ''), 10)
-  return `TC-${String(num + 1).padStart(3, '0')}`
+function buildAbbreviation(name: string): string {
+  const words = name.trim().split(/\s+/).filter(Boolean)
+  const initials = words.map(w => w[0].toUpperCase()).join('')
+  return initials.length >= 2 ? initials : name.slice(0, 2).toUpperCase().padEnd(2, 'X')
+}
+
+async function generateTcId(projectId?: string | null): Promise<string> {
+  let abbr = 'GEN'
+
+  if (projectId) {
+    const project = await prisma.project.findUnique({
+      where: { id: projectId },
+      select: { id: true, name: true, abbreviation: true },
+    })
+    if (project) {
+      if (project.abbreviation) {
+        abbr = project.abbreviation
+      } else {
+        // Lazy: project existed before abbreviation feature — generate and persist
+        const base = buildAbbreviation(project.name)
+        let candidate = base
+        let i = 2
+        while (await prisma.project.findFirst({ where: { abbreviation: candidate, NOT: { id: project.id } } })) {
+          candidate = base + i++
+        }
+        await prisma.project.update({ where: { id: project.id }, data: { abbreviation: candidate } })
+        abbr = candidate
+      }
+    }
+  }
+
+  const result = await prisma.$queryRaw<[{ seq: bigint }]>`
+    INSERT INTO "ProjectCounter" (id, seq) VALUES (${abbr}, 1)
+    ON CONFLICT (id) DO UPDATE SET seq = "ProjectCounter".seq + 1
+    RETURNING seq
+  `
+
+  return `TC-${abbr}-${Number(result[0].seq)}`
 }
 
 type TcExportShape = {
@@ -106,7 +139,7 @@ export const testCaseRoutes: FastifyPluginAsync = async (fastify) => {
     const body = TestCaseCreateSchema.safeParse(request.body)
     if (!body.success) return badRequest(reply, body.error.message)
 
-    const tcId = await generateTcId()
+    const tcId = await generateTcId(body.data.projectId)
     const testCase = await prisma.testCase.create({
       data: { ...body.data, tcId, steps: body.data.steps as any, authorId: request.user.sub },
       include: {
@@ -246,7 +279,7 @@ export const testCaseRoutes: FastifyPluginAsync = async (fastify) => {
           continue
         }
 
-        const tcId = await generateTcId()
+        const tcId = await generateTcId(projectId)
         const tc = await prisma.testCase.create({
           data: { ...parsed.data, tcId, steps: parsed.data.steps as any, authorId: request.user.sub },
         })
